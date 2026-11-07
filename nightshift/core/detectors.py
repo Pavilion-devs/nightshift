@@ -188,7 +188,7 @@ def detect_spike(w: MetricWindow, cfg: DetectorConfig) -> list[Incident]:
         p = pts[last]
         hist = [q.value for q in pts[max(0, last - cfg.spike_window) : last]]
         severity = Severity.CRITICAL if recent else Severity.WARN
-        onset = pts[recent[0]] if recent else p
+        onset = pts[refine_onset(pts, recent[0] if recent else last, cfg)]
         out.append(
             Incident(
                 _K.SPIKE,

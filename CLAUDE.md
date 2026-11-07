@@ -33,8 +33,8 @@ Hackathon** (deadline **Nov 11, 2026, 5 PM EST**). The full plan, scope, phases 
    `react/jsx-runtime`. No JSX syntax (use `jsx()`/`jsxs()`), no DOM reaching, no raw `<webview>`, no eval. Charts are
    hand-built SVG.
 9. **Logging**: use `logging.getLogger("nightshift")`, never `print()` in plugin code (stdout goes to the gateway log).
-10. **Secrets in logs**: run `agent.redact.redact_sensitive_text` (adapter) or our own masking (core) over log tails
-    before storing them or sending them to an LLM or a platform.
+10. **Secrets in logs**: run `nightshift.core.redact.redact` over log tails before storing them or sending them to an
+    LLM or a platform. (`agent.redact` is not on Hermes's public import allowlist, so we don't use it.)
 
 ## Commands
 
@@ -59,7 +59,7 @@ hermes logs --level WARNING
 
 ## Code style
 
-- Python 3.11+, type hints everywhere, dataclasses for models, ruff (line length 110).
+- Python 3.11+, type hints everywhere, dataclasses for models, ruff (formatter wraps at 110; lint allows prose up to 120).
 - Pure functions for detectors: `detect_*(window: MetricWindow, cfg: DetectorConfig) -> list[Incident]`.
 - Every detector ships with a firing fixture and a clean-curve fixture in `tests/fixtures/`.
 - Time comes through an injectable clock (`core/clock.py`), so tests never sleep.

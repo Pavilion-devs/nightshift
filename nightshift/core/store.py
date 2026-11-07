@@ -18,7 +18,7 @@ from typing import Any
 
 from .models import Incident, MetricPoint
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _MIGRATIONS: dict[int, str] = {
     1: """
@@ -81,6 +81,22 @@ _MIGRATIONS: dict[int, str] = {
         at          REAL NOT NULL
     );
     CREATE INDEX IF NOT EXISTS actions_run ON actions(run_id, at);
+    """,
+    2: """
+    ALTER TABLE runs ADD COLUMN attempt INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE runs ADD COLUMN owner TEXT;                     -- which Hermes process supervises it
+    ALTER TABLE runs ADD COLUMN lease_until REAL;               -- ownership expires unless renewed
+    ALTER TABLE runs ADD COLUMN last_intervention_at REAL;
+    ALTER TABLE runs ADD COLUMN restored_from TEXT;             -- last checkpoint a recovery used
+    ALTER TABLE runs ADD COLUMN note TEXT;                      -- one line on why it is in its status
+    CREATE TABLE IF NOT EXISTS commands (                       -- approve/stop/ack from any process
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id       TEXT NOT NULL,
+        kind         TEXT NOT NULL,
+        created_at   REAL NOT NULL,
+        processed_at REAL,
+        result       TEXT
+    );
     """,
 }
 
@@ -176,6 +192,59 @@ class Store:
         row["updated_at"] = time.time()
         sets = ", ".join(f"{k} = ?" for k in row)
         self.conn().execute(f"UPDATE runs SET {sets} WHERE id = ?", (*row.values(), run_id))
+
+    def transition(self, run_id: str, from_statuses: Iterable[str], to_status: str, **fields: Any) -> bool:
+        """Atomically move a run between statuses; False if it was not in one of ``from_statuses``."""
+        st = list(from_statuses)
+        row = self._encode_run_fields(fields)
+        row["status"] = to_status
+        row["updated_at"] = time.time()
+        sets = ", ".join(f"{k} = ?" for k in row)
+        marks = ", ".join("?" for _ in st)
+        cur = self.conn().execute(
+            f"UPDATE runs SET {sets} WHERE id = ? AND status IN ({marks})", (*row.values(), run_id, *st)
+        )
+        return cur.rowcount == 1
+
+    def claim(self, run_id: str, owner: str, lease_s: float, now: float | None = None) -> bool:
+        """Take or renew ownership of a run. Only one live owner at a time; a lapsed lease can be taken over."""
+        now = time.time() if now is None else now
+        cur = self.conn().execute(
+            """UPDATE runs SET owner = ?, lease_until = ?
+               WHERE id = ? AND (owner IS NULL OR owner = ? OR lease_until IS NULL OR lease_until < ?)""",
+            (owner, now + lease_s, run_id, owner, now),
+        )
+        return cur.rowcount == 1
+
+    def release(self, run_id: str, owner: str) -> None:
+        self.conn().execute(
+            "UPDATE runs SET owner = NULL, lease_until = NULL WHERE id = ? AND owner = ?", (run_id, owner)
+        )
+
+    def add_command(self, run_id: str, kind: str) -> int:
+        cur = self.conn().execute(
+            "INSERT INTO commands (run_id, kind, created_at) VALUES (?, ?, ?)", (run_id, kind, time.time())
+        )
+        return int(cur.lastrowid)
+
+    def pending_commands(self, run_ids: Iterable[str]) -> list[dict[str, Any]]:
+        ids = list(run_ids)
+        if not ids:
+            return []
+        marks = ", ".join("?" for _ in ids)
+        rows = (
+            self.conn()
+            .execute(
+                f"SELECT * FROM commands WHERE processed_at IS NULL AND run_id IN ({marks}) ORDER BY id", ids
+            )
+            .fetchall()
+        )
+        return [dict(r) for r in rows]
+
+    def finish_command(self, command_id: int, result: str) -> None:
+        self.conn().execute(
+            "UPDATE commands SET processed_at = ?, result = ? WHERE id = ?", (time.time(), result, command_id)
+        )
 
     def bump_interventions(self, run_id: str) -> int:
         c = self.conn()
