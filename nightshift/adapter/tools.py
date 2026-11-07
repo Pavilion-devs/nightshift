@@ -225,11 +225,61 @@ def setup_cli(parser: Any) -> None:
         p.add_argument("run_id")
     rp = sub.add_parser("report", help="Overnight report")
     rp.add_argument("--hours", type=float, default=12.0)
+    lp = sub.add_parser(
+        "launch", help="Propose a run (approve it afterwards): launch [opts] -- python train.py ..."
+    )
+    lp.add_argument("--name", default="")
+    lp.add_argument("--cwd", default="")  # dest names avoid hermes's own args (command, name...)
+    lp.add_argument(
+        "--param", action="append", default=[], metavar="KEY=VALUE", help="value for a {placeholder}"
+    )
+    lp.add_argument(
+        "--source", action="append", default=[], metavar="TYPE:PATH", help="jsonl/csv/tfevents/log"
+    )
+    lp.add_argument("--checkpoints", action="append", default=[], metavar="GLOB")
+    lp.add_argument("--max-interventions", type=int, default=None)
+    lp.add_argument("train_command", nargs="+", help="the training command (put it after --)")
+    wp = sub.add_parser("watch", help="Watch an existing run's log read-only")
+    wp.add_argument("log_path")
+    wp.add_argument("--name", default="")
+
+
+def _param_value(raw: str) -> Any:
+    for cast in (int, float):
+        try:
+            return cast(raw)
+        except ValueError:
+            pass
+    return raw
 
 
 def make_cli_handler(handlers: Handlers) -> Callable[[Any], int]:
     def handle(args: Any) -> int:
         cmd = getattr(args, "ns_cmd", None) or "status"
+        if cmd in ("launch", "watch"):
+            spec: dict[str, Any] = {"name": args.name, "cwd": getattr(args, "cwd", "") or None}
+            if cmd == "launch":
+                spec["command"] = list(args.train_command)
+                spec["params"] = {k: _param_value(v) for k, _, v in (p.partition("=") for p in args.param)}
+                spec["sources"] = [
+                    {"type": t, "path": path} for t, _, path in (s.partition(":") for s in args.source)
+                ]
+                if args.checkpoints:
+                    spec["checkpoint_patterns"] = args.checkpoints
+                if args.max_interventions is not None:
+                    spec["playbook"] = {"max_interventions": args.max_interventions}
+                out = json.loads(handlers.tool_handlers()["nightshift_launch"](spec))
+            else:
+                spec["log_path"] = args.log_path
+                out = json.loads(handlers.tool_handlers()["nightshift_watch"](spec))
+            if not out.get("ok"):
+                print(f"Nightshift: {out.get('error')}")
+                return 1
+            if cmd == "launch":
+                print(format_card(out))
+            else:
+                print(f"👀 Watching {out['run_id']} read-only.")
+            return 0
         raw = cmd
         if getattr(args, "run_id", None):
             raw += f" {args.run_id}"
@@ -239,3 +289,14 @@ def make_cli_handler(handlers: Handlers) -> Callable[[Any], int]:
         return 0
 
     return handle
+
+
+def format_card(card: dict) -> str:
+    lines = [
+        f"🌙 Proposed run {card['name']} [{card['run_id']}]: nothing has started yet.",
+        f"  directory: {card['cwd']}",
+        f"  command:   {card['command']}",
+    ]
+    lines += [f"  • {ln}" for ln in card["playbook"]]
+    lines.append(f"Approve with: hermes nightshift approve {card['run_id']}   (or {card['approve_with']})")
+    return "\n".join(lines)

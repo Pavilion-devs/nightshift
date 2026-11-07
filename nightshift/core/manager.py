@@ -11,6 +11,7 @@ import logging
 import os
 import shutil
 import threading
+import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -54,6 +55,7 @@ class Manager:
         owner: str | None = None,
         sup_cfg: SupervisorConfig | None = None,
         housekeeping_s: float = 1.0,
+        start_grace_s: float = 0.0,
     ) -> None:
         self.store = store
         self.data_dir = Path(data_dir)
@@ -63,6 +65,10 @@ class Manager:
         self.owner = owner or f"{os.getpid()}-{uuid.uuid4().hex[:6]}"
         self.sup_cfg = sup_cfg or SupervisorConfig()
         self.housekeeping_s = housekeeping_s
+        # A process must have been up this long before it launches, adopts or acts on anything. One-shot
+        # commands (`hermes nightshift status`, the validator) exit sooner and so never touch a run.
+        self.start_grace_s = start_grace_s
+        self._started_at: float | None = None
         self.supervisors: dict[str, RunSupervisor] = {}
         self._lock = threading.RLock()
         self._stop = threading.Event()
@@ -191,6 +197,7 @@ class Manager:
             if self._thread and self._thread.is_alive():
                 return
             self._stop.clear()
+            self._started_at = time.monotonic()
             self._thread = threading.Thread(target=self._loop, name="nightshift:manager", daemon=True)
             self._thread.start()
 
@@ -207,7 +214,19 @@ class Manager:
             if self._thread:
                 self._thread.join(5)
 
+    def release_all(self) -> None:
+        """Give up every lease now (process exit), so another Hermes process can adopt the runs at once."""
+        with self._lock:
+            ids = list(self.supervisors)
+        for rid in ids:
+            try:
+                self.store.release(rid, self.owner)
+            except Exception:  # best effort at shutdown
+                log.debug("nightshift: could not release %s", rid, exc_info=True)
+
     def _loop(self) -> None:
+        if self.start_grace_s and self._stop.wait(self.start_grace_s):
+            return
         while not self._stop.is_set():
             try:
                 self.housekeeping()

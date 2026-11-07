@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import atexit
 import logging
 import threading
 from pathlib import Path
@@ -45,6 +46,7 @@ class Runtime:
             data_dir=root,
             notifier=HermesNotifier(ctx, self.store),
             diagnoser=HermesDiagnoser(ctx),
+            start_grace_s=float(_setting(ctx, "start_grace_seconds", 8.0)),
             sup_cfg=SupervisorConfig(
                 poll_s=max(0.5, poll), max_diagnoses=int(_setting(ctx, "max_diagnoses", 3))
             ),
@@ -55,6 +57,7 @@ class Runtime:
         if not self._started:
             self._started = True
             self.manager.start()
+            atexit.register(self.manager.release_all)
 
     def shutdown(self) -> None:
         self.manager.shutdown(wait=False)
@@ -67,6 +70,21 @@ def get_runtime(ctx: Any) -> Runtime:
             _runtime = Runtime(ctx)
         _runtime.ensure_started()
         return _runtime
+
+
+def start_soon(ctx: Any, delay_s: float = 1.0) -> None:
+    """Start the engine shortly after load, so a gateway that restarted overnight re-adopts running jobs
+    without waiting for someone to send a message. Safe in short-lived processes: see start_grace_s."""
+
+    def _go() -> None:
+        try:
+            get_runtime(ctx)
+        except Exception:
+            log.exception("nightshift: could not start")
+
+    timer = threading.Timer(delay_s, _go)
+    timer.daemon = True
+    timer.start()
 
 
 def reset_runtime() -> None:

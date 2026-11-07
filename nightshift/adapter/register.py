@@ -8,7 +8,7 @@ from typing import Any
 
 from .. import __version__
 from . import schemas
-from .runtime import reset_runtime
+from .runtime import reset_runtime, start_soon
 from .tools import Handlers, make_cli_handler, setup_cli
 
 log = logging.getLogger("nightshift")
@@ -82,5 +82,6 @@ def install(ctx: Any) -> Handlers:
             log.debug("nightshift: blueprint not registered", exc_info=True)
     if hasattr(ctx, "on_unload"):
         ctx.on_unload(reset_runtime)
+    start_soon(ctx)
     log.info("nightshift %s registered", __version__)
     return h

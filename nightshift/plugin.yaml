@@ -44,3 +44,9 @@ config_schema:
     type: float
     default: 2.0
     description: How often each run's metrics are read (minimum 0.5).
+  start_grace_seconds:
+    type: float
+    default: 8.0
+    description: >-
+      A Hermes process must have been running this long before Nightshift launches, adopts or acts on a run,
+      so one-shot commands never touch a job. Long-lived processes (gateway, Desktop, chat) take over after it.

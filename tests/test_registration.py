@@ -91,7 +91,7 @@ def ctx(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(rt_mod, "data_dir", lambda: data)
     work = tmp_path / "work"
     work.mkdir()
-    c = FakeCtx(cwd=str(work), surface="telegram")
+    c = FakeCtx(cwd=str(work), surface="telegram", config={"start_grace_seconds": 0})
     nightshift.register(c)
     yield c
     rt_mod.reset_runtime()
@@ -201,6 +201,17 @@ def test_cli_handler(ctx: FakeCtx, capsys: pytest.CaptureFixture[str]) -> None:
     assert handler(parser.parse_args(["approve", "nope"])) == 0
     out = capsys.readouterr().out
     assert "Nightshift" in out and "Not approved" in out
+    args = parser.parse_args(
+        ["launch", "--name", "cli", "--param", "lr=0.003", "--param", "tag=x", "--source", "jsonl:m.jsonl",
+         "--checkpoints", "out/*.json", "--max-interventions", "1", "--", sys.executable, TRAIN, "--lr", "{lr}"]
+    )  # fmt: skip
+    assert handler(args) == 0
+    out = capsys.readouterr().out
+    assert "nothing has started yet" in out and "--lr 0.003" in out and "hermes nightshift approve" in out
+    assert handler(parser.parse_args(["launch", "--", "no-such-binary-xyz"])) == 1
+    (Path(ctx._cwd) / "w.log").write_text("step 1: loss 2\n")
+    assert handler(parser.parse_args(["watch", "w.log"])) == 0
+    assert "Watching" in capsys.readouterr().out
 
 
 # --- notifier & diagnoser ------------------------------------------------------------------------------------
