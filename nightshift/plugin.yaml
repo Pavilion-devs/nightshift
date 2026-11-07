@@ -1,0 +1,25 @@
+manifest_version: 2
+name: nightshift
+version: 0.1.0
+description: >-
+  Hermes takes the night shift on your ML training runs. Nightshift watches a run's metrics, catches NaN, loss
+  spikes, divergence, OOM crashes and stalls, recovers the run within a playbook you approved, and alerts you
+  with the chart. Disclosure: after your explicit approval it launches the training command you approved as a
+  background process and may stop or restart that process group; it reads the run's log, metric and checkpoint
+  paths; it stores run data in its plugin data folder; on an incident it may make capped LLM calls and send an
+  alert to your configured messaging platform. No telemetry and no network calls of its own.
+author: Pavilion-devs
+license: MIT
+homepage: https://github.com/Pavilion-devs/nightshift
+requires_hermes: ">=0.23.0"
+tags: [ml, training, monitoring, mlops, alerts]
+provides_tools:
+  - nightshift_status
+provides_hooks: []
+config_schema:
+  alert_target:
+    type: str
+    default: ""
+    description: >-
+      Where to push incident alerts, as a send_message target (e.g. "telegram" for its home channel).
+      Empty means in-app only.

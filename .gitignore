@@ -1,0 +1,21 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+.DS_Store
+
+# run outputs from examples and local testing
+runs/
+checkpoints/
+*.ckpt
+*.pt
+*.pth
+nightshift-data/
+examples/**/data/
+examples/**/out/
