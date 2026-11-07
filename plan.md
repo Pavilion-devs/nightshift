@@ -78,7 +78,7 @@ Install locally with `ln -sfn "$PWD/nightshift" ~/.hermes/plugins/nightshift`.
 ```
 neus/                                  # repo root (published as github.com/Pavilion-devs/nightshift)
 ├── pyproject.toml                     # no runtime deps; dev: pytest, ruff, coverage
-├── nightshift/                        # ← the Hermes plugin directory
+├── nightshift/                        # ← the Hermes plugin directory (dashboard/ = REST for Desktop + web tab)
 │   ├── plugin.yaml                    # manifest v2: tools, hooks, config_schema, requires_hermes
 │   ├── __init__.py                    # register(ctx): thin, delegates to nightshift.adapter.register
 │   ├── desktop/plugin.js              # Desktop pane + status chip (ESM, jsx() calls, no JSX)
@@ -125,7 +125,7 @@ neus/                                  # repo root (published as github.com/Pavi
 | `ctx.llm` | incident diagnosis (capped) |
 | `ctx.post_message` / platform push | alerts with chart |
 | `ctx.register_automation_blueprint` | "Morning training report" |
-| `ctx.register_rpc` + `ctx.emit_to_session` (or `plugin_api.py`) | live data for the Desktop pane |
+| `dashboard/plugin_api.py` + Desktop `ctx.rest` | live data for the Desktop pane and web-dashboard tab |
 | `ctx.register_skill` | bundled usage skill |
 | `config_schema` | thresholds, playbook defaults, alert channel, LLM budget → Desktop settings form |
 | Desktop SDK | `PANES_AREA` (right), `STATUSBAR_AREAS.right`, `ctx.os` notifications, `ctx.storage` |
@@ -185,8 +185,13 @@ the run is stopped and the user is paged.
 
 ## 10. Open questions settled in Phase 0
 
-Read from `NousResearch/hermes-agent` main source on Nov 7 (the installed v0.23.0 copy is re-checked once the
-install finishes). File and function names are given so each answer can be re-verified.
+Read from `NousResearch/hermes-agent` main on Nov 7, then **re-checked against the installed stable v0.23.0**
+(`2bd378ed1b`, `~/.hermes/hermes-agent`) on Nov 8. **We target v0.23.0**: it is what `install.sh` installs and what
+judges will run. In v0.23.0 `PluginContext` lives in `hermes_cli/plugins.py`. `post_message`, `inject_message`,
+`ask_choice`, `dispatch_tool`, `on_unload`, `spawn_task`, `llm`, `emit`/`subscribe`, `register_skill` and
+`register_automation_blueprint` all exist, but **`register_rpc` / `emit_to_session` do not** (main-only), so
+answer 3 changed. Hermes runs plugins on its bundled **Python 3.14** in a plugin host
+(`plugins.isolation: host`). File and function names are given so each answer can be re-verified.
 
 1. **Alerts from a background thread → `ctx.dispatch_tool("send_message", {"action": "send", "target":
    "telegram", "message": "..."})`.** `hermes_cli/plugin_messages.py` (`post`) refuses outside a bound session
@@ -201,10 +206,12 @@ install finishes). File and function names are given so each answer can be re-ve
    *proposes* a run (command, cwd, playbook, budget) and returns a pending id. A human starts it with
    `/nightshift approve <id>` (the slash handler confirms with `ctx.ask_choice`) or the Approve button in the
    Desktop pane. The agent can never start a process on its own.
-3. **Desktop data → `ctx.register_rpc(name, handler)`** (`hermes_cli/plugin_rpc.py`), served as
-   `plugin.nightshift.<name>` over the gateway socket and called from the pane with
-   `host.request('plugin.nightshift.status', {})`. It doesn't need the web dashboard. Live pushes:
-   `ctx.emit_to_session(session_id, event, payload)`. v1 polls every 2 s, which is simpler and good enough.
+3. **Desktop data → `nightshift/dashboard/plugin_api.py` (FastAPI `router`), read with `ctx.rest('/status')`.**
+   Desktop's `ctx.rest` (`apps/desktop/src/api/plugins.ts`, `pluginRest`) calls `/api/plugins/<id>/…` on the
+   local gateway, the same pattern as the bundled Kanban plugin (`plugins/kanban/dashboard/`). The same routes
+   back a web-dashboard tab (`dashboard/manifest.json` + `dist/index.js`). Under `plugins.isolation: host` the
+   routes may run in another process from our supervisor threads, so **routes read only from SQLite**. The pane
+   polls every 2 s. (`register_rpc` exists only on main, not in v0.23.0.)
 4. **Background work → our own daemon `threading.Thread`, stopped via `ctx.on_unload(callback)`**
    (`hermes_cli/plugins_context.py`). `ctx.spawn_task` needs a running asyncio loop, which plugin load doesn't
    guarantee. Training processes start with `start_new_session=True`, so they outlive a Hermes restart.

@@ -2,16 +2,16 @@
  * Nightshift for Hermes Desktop: a live pane for watched training runs and a status-bar chip.
  *
  * Disk plugins load uncompiled: no JSX, imports limited to @hermes/plugin-sdk, react, react/jsx-runtime.
- * Data comes from the Python half over the gateway's plugin RPC (plugin.nightshift.<method>).
+ * Data comes from the plugin's backend routes (dashboard/plugin_api.py) via ctx.rest('/status').
  */
 
-import { STATUSBAR_AREAS, Tip, host } from '@hermes/plugin-sdk'
+import { STATUSBAR_AREAS, Tip } from '@hermes/plugin-sdk'
 import { jsx, jsxs } from 'react/jsx-runtime'
 import { useEffect, useState } from 'react'
 
 const POLL_MS = 2000
 
-function useStatus() {
+function useStatus(rest) {
   const [status, setStatus] = useState(null)
   const [error, setError] = useState(null)
 
@@ -19,7 +19,7 @@ function useStatus() {
     let alive = true
     const tick = async () => {
       try {
-        const res = await host.request('plugin.nightshift.status', {})
+        const res = await rest('/status')
         if (alive) {
           setStatus(res)
           setError(null)
@@ -34,13 +34,13 @@ function useStatus() {
       alive = false
       clearInterval(id)
     }
-  }, [])
+  }, [rest])
 
   return { status, error }
 }
 
-function Pane() {
-  const { status, error } = useStatus()
+function Pane({ rest }) {
+  const { status, error } = useStatus(rest)
   const runs = (status && status.runs) || []
   return jsxs('div', {
     className: 'flex h-full flex-col gap-2 p-3 text-sm',
@@ -58,8 +58,8 @@ function Pane() {
   })
 }
 
-function Chip() {
-  const { status, error } = useStatus()
+function Chip({ rest }) {
+  const { status, error } = useStatus(rest)
   const n = (status && status.runs && status.runs.length) || 0
   const label = error ? 'Nightshift offline' : n ? `${n} run(s) watched` : 'Nightshift idle'
   return jsx(Tip, {
@@ -81,13 +81,13 @@ export default {
       area: 'panes',
       title: 'Nightshift',
       data: { placement: 'right', width: '320px' },
-      render: () => jsx(Pane, {})
+      render: () => jsx(Pane, { rest: ctx.rest })
     })
     ctx.register({
       id: 'chip',
       area: STATUSBAR_AREAS.right,
       order: 125,
-      render: () => jsx(Chip, {})
+      render: () => jsx(Chip, { rest: ctx.rest })
     })
   }
 }

@@ -16,7 +16,6 @@ class FakeCtx:
     def __init__(self) -> None:
         self.tools: dict[str, dict[str, Any]] = {}
         self.hooks: dict[str, Any] = {}
-        self.rpc: dict[str, Any] = {}
         self.commands: dict[str, Any] = {}
 
     def register_tool(self, name: str, toolset: str, schema: dict, handler: Any, **kw: Any) -> None:
@@ -24,9 +23,6 @@ class FakeCtx:
 
     def register_hook(self, name: str, callback: Any, **kw: Any) -> None:
         self.hooks[name] = callback
-
-    def register_rpc(self, name: str, handler: Any) -> None:
-        self.rpc[name] = handler
 
     def register_command(self, name: str, handler: Any, **kw: Any) -> None:
         self.commands[name] = handler
@@ -55,9 +51,3 @@ def test_status_tool_returns_json_and_never_raises() -> None:
     out = json.loads(ctx.tools["nightshift_status"]["handler"]({}))
     assert out["ok"] is True
     assert out["version"] == nightshift.__version__
-
-
-def test_status_rpc_registered() -> None:
-    ctx = FakeCtx()
-    nightshift.register(ctx)
-    assert ctx.rpc["status"]({})["ok"] is True

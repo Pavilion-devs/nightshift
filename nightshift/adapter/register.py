@@ -28,10 +28,6 @@ def _status_handler(args: dict, **kwargs: Any) -> str:
         return json.dumps({"ok": False, "error": str(exc)})
 
 
-def _rpc_status(params: Any, **kwargs: Any) -> dict[str, Any]:
-    return {"ok": True, "version": __version__, "runs": []}
-
-
 def install(ctx: Any) -> None:
     """Register every Nightshift surface. Must match plugin.yaml's provides_* lists exactly."""
     ctx.register_tool(
@@ -42,5 +38,4 @@ def install(ctx: Any) -> None:
         description=STATUS_SCHEMA["description"],
         emoji="🌙",
     )
-    ctx.register_rpc("status", _rpc_status)
     log.info("nightshift %s registered", __version__)
