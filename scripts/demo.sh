@@ -16,9 +16,18 @@ PY="${PYTHON:-python3}"
 HERMES="${HERMES:-hermes}"
 
 "$PY" -c "import torch" 2>/dev/null || { echo "PYTHON must have torch installed (got: $PY)"; exit 1; }
-mkdir -p "$WORK/run1" "$WORK/run2"
-cp "$ROOT/examples/tinygpt/train.py" "$WORK/run1/train.py"
-cp "$ROOT/examples/tinygpt/train.py" "$WORK/run2/train.py"
+# Safe to re-run before every take: old checkpoints are removed so a rollback can only pick this take's.
+# The dataset is fetched once into $WORK/data and reused, so a recording never waits on the network.
+rm -rf "$WORK/run1/out" "$WORK/run2/out"
+mkdir -p "$WORK/data" "$WORK/run1/data" "$WORK/run2/data"
+if [ ! -s "$WORK/data/tinyshakespeare.txt" ]; then
+  (cd "$WORK" && "$PY" -c "import sys; sys.path.insert(0, '$ROOT/examples/tinygpt'); \
+from pathlib import Path; from train import load_text; load_text(Path('data'))")
+fi
+for run in run1 run2; do
+  cp "$ROOT/examples/tinygpt/train.py" "$WORK/$run/train.py"
+  cp "$WORK/data/tinyshakespeare.txt" "$WORK/$run/data/tinyshakespeare.txt"
+done
 
 "$HERMES" nightshift launch --name tinygpt --cwd "$WORK/run1" \
   --param lr=0.003 --param batch_size=32 --param grad_accum=1 \
