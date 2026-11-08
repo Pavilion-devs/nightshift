@@ -340,12 +340,13 @@ class RunSupervisor:
             pgid=handle.pgid,
             proc_id=handle.proc_id,
             log_path=log_path,
-            started_at=now,
             last_intervention_at=now,
             restored_from=resume,
             note=f"attempt {attempt}",
         )
         self.store.bump_interventions(self.run_id)
+        for iid in self._open.values():
+            self.store.resolve_incident(iid, at=now)  # recovered: the new attempt starts healthy
         self._init_sources(self._run(), fresh=True)
 
     def request_stop(self, reason: str) -> str:
@@ -364,7 +365,11 @@ class RunSupervisor:
             self.handle.stop(self.cfg.stop_grace_s)
 
     def _finish(self, run: dict[str, Any], status: str, note: str, *, notify: bool = True) -> None:
-        self.store.update_run(self.run_id, status=status, ended_at=self.clock.now(), note=note)
+        now = self.clock.now()
+        self.store.update_run(self.run_id, status=status, ended_at=now, note=note)
+        for iid in self._open.values():
+            self.store.resolve_incident(iid, at=now)  # a run that is over has nothing open any more
+        self._open.clear()
         self.done = True
         if notify:
             self.notifier.send(alert_for_status(self.store, self._run(), status, note))

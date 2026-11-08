@@ -132,7 +132,13 @@ def render(
     if x_hi == x_lo:
         x_hi = x_lo + 1
     if finite:
-        ys = [math.log10(y) if log_y else y for _, y in finite]
+        raw = sorted(y for _, y in finite)
+        cap = raw[-1]
+        if len(raw) > 10 and cap > 3 * raw[int(0.9 * (len(raw) - 1))]:
+            cap = (
+                raw[int(0.9 * (len(raw) - 1))] * 1.6
+            )  # a blow-up runs off the top instead of flattening the rest
+        ys = [math.log10(y) if log_y else y for y in raw if y <= cap]
         y_lo, y_hi = min(ys), max(ys)
     else:
         y_lo, y_hi = 0.0, 1.0
@@ -146,7 +152,7 @@ def render(
 
     def sy(y: float) -> float:
         yy = math.log10(y) if log_y else y
-        return bottom - (yy - y_lo) / (y_hi - y_lo) * (bottom - top)
+        return max(top - 2, bottom - (yy - y_lo) / (y_hi - y_lo) * (bottom - top))
 
     for k in range(5):  # grid + y labels
         gy = top + k * (bottom - top) / 4

@@ -77,6 +77,8 @@ def alert_for_status(store: Store, run: dict[str, Any], status: str, note: str) 
 
 
 def chart_for_run(store: Store, run: dict[str, Any], width: int = 800, height: int = 400) -> bytes:
+    """Loss against training step. After a rollback the new attempt is drawn from the checkpoint's step, over
+    the branch that diverged, so the picture shows the fork; incidents and restore points are marked."""
     names = store.metric_names(run["id"])
     train = [n for n in names if is_train_loss(n)][:1]
     val = [n for n in names if is_val_loss(n)][:1]
@@ -85,22 +87,32 @@ def chart_for_run(store: Store, run: dict[str, Any], width: int = 800, height: i
         pts = store.series(run["id"], name, max_points=width)
         series.append(
             Series(
-                points=[(p["wall"], p["value"]) for p in pts],
+                points=[(float(p["step"]), p["value"]) for p in pts],
                 attempts=[p["attempt"] for p in pts] if i == 0 else [],
                 color=None if i == 0 else (158, 206, 106),
             )
         )
     incidents = [i for i in store.incidents(run["id"], limit=50) if i["severity"] != "info"]
     actions = store.actions(run["id"], limit=50)
+    restores = [
+        (a.get("details") or {}).get("checkpoint", {}) or {}
+        for a in actions
+        if a["kind"] in (ROLLBACK_RESTART, OOM_RESTART) and a["ok"]
+    ]
     finite = [y for s in series for _, y in s.points if math.isfinite(y) and y > 0]
     log_y = bool(finite) and max(finite) / min(finite) > 50
     return render(
         series,
         width=width,
         height=height,
-        incidents_x=[i["at"] for i in incidents],
-        recoveries_x=[a["at"] for a in actions if a["kind"] in (ROLLBACK_RESTART, OOM_RESTART) and a["ok"]],
+        incidents_x=[
+            float(s)
+            for i in incidents
+            if (s := i["onset_step"] if i["onset_step"] is not None else i["step"]) is not None
+        ],
+        recoveries_x=[float(c["step"]) for c in restores if c.get("step") is not None],
         log_y=log_y,
+        x_is_time=False,
     )
 
 

@@ -30,8 +30,8 @@ def run_summary(store: Store, run: dict[str, Any], now: float | None = None) -> 
     last_action = next(iter(store.actions(run["id"], limit=1)), None)
     started = run.get("started_at")
     health = "healthy"
-    if run["status"] in ("stopped", "failed"):
-        health = run["status"]
+    if run["status"] in ("stopped", "failed", "finished", "cancelled"):
+        health = "stopped" if run["status"] == "cancelled" else run["status"]
     elif any(i["severity"] == "critical" for i in open_incidents) or run["status"] == "recovering":
         health = "critical"
     elif any(i["severity"] == "warn" for i in open_incidents):
