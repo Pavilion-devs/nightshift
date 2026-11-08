@@ -19,3 +19,4 @@ checkpoints/
 nightshift-data/
 examples/**/data/
 examples/**/out/
+!nightshift/dashboard/dist/

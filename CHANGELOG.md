@@ -10,6 +10,10 @@
   agent's context in incident lines; checkpoint paths handed to `{resume}` are absolute; storage no longer falls
   back to a hard-coded `~/.hermes` path outside Hermes (tests inject their own directory).
 - Demo scenario run a 4th time in real Hermes v0.23.0: same results.
+- Fixed: the pid-reuse guard compared the command line too, which changes when a launcher re-execs itself
+  (python.org's macOS Python re-execs into `Python.app`), so a re-attached run could be mistaken for a stranger's
+  process. It now compares the process start time only.
+- Fixed: the web-dashboard bundle (`nightshift/dashboard/dist/`) was git-ignored and missing from the repo.
 
 ### Phase 3: Desktop pane, demo kit
 - One UI (`ui/core.js`) built into the Desktop plugin and a web-dashboard tab, verified live in `hermes dashboard`:

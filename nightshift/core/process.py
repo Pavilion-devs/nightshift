@@ -89,10 +89,14 @@ def template_env(params: dict[str, object], resume: str | None, run_id: str, att
 
 
 def fingerprint(pid: int) -> str | None:
-    """Start time + command of ``pid`` as reported by ``ps``; None if it is not running."""
+    """Start time of ``pid`` as reported by ``ps``; None if it is not running.
+
+    A recycled pid belongs to a process started later, so its start time differs. The command line is not part
+    of the fingerprint: it legitimately changes when a launcher re-execs itself (python.org's macOS Python
+    re-execs into ``Python.app``; ``torchrun`` and shell wrappers do the same)."""
     try:
         res = subprocess.run(
-            ["ps", "-o", "lstart=,command=", "-p", str(pid)],
+            ["ps", "-o", "lstart=", "-p", str(pid)],
             capture_output=True,
             text=True,
             timeout=5,
@@ -171,7 +175,10 @@ class ProcessHandle:
         if not pid_alive(self.pid):
             return False
         current = fingerprint(self.pid)
-        return current is not None and (self.proc_id is None or current == self.proc_id)
+        if current is None:
+            return False
+        # rows written before v0.1.0 stored "<start time> <command>"
+        return self.proc_id is None or self.proc_id == current or self.proc_id.startswith(current + " ")
 
     def poll(self) -> tuple[bool, int | None]:
         """(alive, exit code). Exit code is None for a re-attached process whose parent we are not."""

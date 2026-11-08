@@ -206,6 +206,23 @@ def test_reattach_refuses_recycled_pids(tmp_path: Path) -> None:
     assert not gone.is_ours() and fingerprint(h.pid) is None
 
 
+def test_reattach_survives_a_launcher_that_re_execs_itself(tmp_path: Path) -> None:
+    """python.org's macOS Python, torchrun and shell wrappers exec into another command line after launch."""
+    code = "import os, sys, time; time.sleep(0.3); os.execv(sys.executable, [sys.executable, '-c', 'import time; time.sleep(30)'])"  # noqa: E501
+    h = ProcessHandle.launch(
+        [sys.executable, "-c", code], cwd=str(tmp_path), log_path=str(tmp_path / "x.log")
+    )
+    try:
+        time.sleep(1.0)  # the command line has changed by now; the start time has not
+        same = ProcessHandle.reattach(h.pid, h.pgid, h.proc_id, h.log_path)
+        assert same.is_ours()
+        legacy = ProcessHandle.reattach(h.pid, h.pgid, f"{h.proc_id} /old/python -c x", h.log_path)
+        assert legacy.is_ours()
+    finally:
+        os.killpg(h.pgid, signal.SIGKILL)
+        h.popen.wait()
+
+
 def test_read_tail_and_gpu(tmp_path: Path) -> None:
     f = tmp_path / "log"
     f.write_text("".join(f"line {i}\n" for i in range(500)) + "bar 1\rbar 2\n")

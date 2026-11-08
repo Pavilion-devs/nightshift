@@ -176,7 +176,7 @@ Nightshift runs processes on your machine, so it stays inside tight limits:
    budget stops the run and pages you.
 3. **No shell.** Commands run as argv lists (`shell=False`) in their own process group.
 4. **Only its own processes.** Nightshift signals only process groups it started, and it re-checks the PID's
-   start time and command line before every signal. It never kills a reused PID. Watched runs are notify-only.
+   start time before every signal, so it never kills a reused PID. Watched runs are notify-only.
 5. **Silent while healthy.** No LLM calls, no notifications and no context injection unless an incident is
    open. Diagnosis runs once per critical incident, **after** recovery, capped at 3 per run.
 6. **Secrets stay out.** Log tails are scrubbed (API keys, tokens, `KEY=value` secrets, URL credentials) before
