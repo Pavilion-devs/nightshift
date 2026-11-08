@@ -303,3 +303,15 @@ def test_deny_and_approve_errors(env) -> None:
     card2 = mgr.propose({"name": "y", "cwd": str(work), "command": _cmd()})
     assert mgr.request_stop(card2["run_id"])["status"] == "cancelled"  # stopping a proposal declines it
     assert math.isfinite(mgr.ack()["acknowledged"])
+
+
+def test_forget_only_removes_finished_runs(env) -> None:
+    mgr, store, _, _, _ = env
+    done = store.create_run(name="old", mode="launch", status="finished")
+    store.add_metrics(done, [])
+    live = store.create_run(name="live", mode="launch", status="running")
+    assert mgr.forget(live)["ok"] is False and store.get_run(live)
+    assert mgr.forget(done) == {"ok": True, "forgotten": 1} and store.get_run(done) is None
+    store.create_run(name="old2", mode="launch", status="stopped")
+    assert mgr.forget("finished")["forgotten"] == 1
+    assert [r["name"] for r in store.list_runs()] == ["live"]

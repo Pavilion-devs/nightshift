@@ -161,7 +161,10 @@ def render(
         c.text(4, int(gy) - 5, _label(10**val if log_y else val), AXIS_TEXT)
     for k in range(3):  # x labels: start, middle, end
         xv = x_lo + k * (x_hi - x_lo) / 2
-        lab = time.strftime("%H:%M", time.localtime(xv)) if x_is_time else _label(xv)
+        if x_is_time:
+            lab = time.strftime("%H:%M", time.localtime(xv))
+        else:
+            lab = str(round(xv)) if abs(xv) < 1e7 else _label(xv)  # steps read as plain integers
         lx = left + k * (right - left) / 2 - (len(lab) * 8 if k == 2 else len(lab) * 4 if k == 1 else 0)
         c.text(int(lx), height - 18, lab, AXIS_TEXT)
 

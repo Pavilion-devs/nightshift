@@ -246,6 +246,24 @@ class Store:
             "UPDATE commands SET processed_at = ?, result = ? WHERE id = ?", (time.time(), result, command_id)
         )
 
+    def forget_run(self, run_id: str, terminal: tuple[str, ...]) -> bool:
+        """Delete a finished run and everything recorded about it. Refuses runs that are still active."""
+        c = self.conn()
+        c.execute("BEGIN IMMEDIATE")
+        try:
+            marks = ", ".join("?" for _ in terminal)
+            cur = c.execute(f"DELETE FROM runs WHERE id = ? AND status IN ({marks})", (run_id, *terminal))
+            if cur.rowcount:
+                for table in ("metrics", "incidents", "actions", "commands"):
+                    c.execute(
+                        f"DELETE FROM {table} WHERE run_id = ?", (run_id,)
+                    )  # table names are fixed literals
+            c.execute("COMMIT")
+        except Exception:
+            c.execute("ROLLBACK")
+            raise
+        return cur.rowcount == 1
+
     def bump_interventions(self, run_id: str) -> int:
         c = self.conn()
         c.execute(

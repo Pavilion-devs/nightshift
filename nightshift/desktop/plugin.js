@@ -262,8 +262,8 @@ function makeNightshiftUI(env) {
       h('span', { style: { fontVariantNumeric: 'tabular-nums' } }, `step ${lo}`),
       key(theme.series1, 'train'),
       names.some(n => /val|eval|test|valid/.test(n)) ? key(theme.val, 'val') : null,
-      (run.markers || []).length ? key(theme.bad, 'incident') : null,
-      (run.recoveries || []).length ? key(theme.warn, 'restored from', true) : null,
+      (run.markers || []).some(m => typeof m.step === 'number') ? key(theme.bad, 'incident') : null,
+      (run.recoveries || []).some(r => typeof r.step === 'number') ? key(theme.warn, 'restored from', true) : null,
       h('span', { style: { marginLeft: 'auto', fontVariantNumeric: 'tabular-nums' } }, `step ${hi}`))
   }
 

@@ -49,10 +49,20 @@ def render_argv(template: list[str], params: dict[str, object], resume: str | No
     so ``--resume={resume}`` disappears on a fresh start instead of becoming ``--resume=``."""
     values = {k: _fmt(v) for k, v in params.items()}
     out: list[str] = []
-    for arg in template:
+    for i, arg in enumerate(template):
         names = placeholders([arg])
         if RESUME in names:
             if resume is None:
+                # `--resume {resume}` (two words): drop the flag along with its missing value
+                prev = template[i - 1] if i else ""
+                if (
+                    arg.strip() == "{resume}"
+                    and out
+                    and prev.startswith("-")
+                    and "{" not in prev
+                    and "=" not in prev
+                ):
+                    out.pop()
                 continue
             values[RESUME] = resume
         missing = names - values.keys()

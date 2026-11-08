@@ -124,6 +124,16 @@ def test_render_argv() -> None:
         "--bs=32",
     ]
     assert render_argv(tpl, {"lr": 1e-4, "batch_size": 32}, resume="out/c.pt")[4] == "--resume=out/c.pt"
+    two_words = ["python", "t.py", "--resume", "{resume}", "--lr", "{lr}"]
+    assert render_argv(two_words, {"lr": 1}) == ["python", "t.py", "--lr", "1"]
+    assert render_argv(two_words, {"lr": 1}, resume="c.pt") == [
+        "python",
+        "t.py",
+        "--resume",
+        "c.pt",
+        "--lr",
+        "1",
+    ]
     with pytest.raises(TemplateError, match="no value for lr"):
         render_argv(tpl, {"batch_size": 1})
     with pytest.raises(TemplateError, match="bad placeholder"):

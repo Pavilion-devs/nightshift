@@ -188,6 +188,16 @@ class Manager:
         self.store.add_command(run_id, "stop")
         return {"ok": True, "run_id": run_id, "note": "stopping within a second or two"}
 
+    def forget(self, which: str) -> dict[str, Any]:
+        """Remove finished runs from history: one id, or "finished" for every finished/stopped/failed run."""
+        ids = (
+            [r["id"] for r in self.store.list_runs(TERMINAL, limit=1000)] if which == "finished" else [which]
+        )
+        removed = [rid for rid in ids if self.store.forget_run(rid, TERMINAL)]
+        if which != "finished" and not removed:
+            return {"ok": False, "error": f"no finished run {which!r} (active runs must be stopped first)"}
+        return {"ok": True, "forgotten": len(removed)}
+
     def ack(self, run_id: str | None = None) -> dict[str, Any]:
         return {"ok": True, "acknowledged": self.store.ack_incidents(run_id)}
 

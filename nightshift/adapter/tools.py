@@ -171,6 +171,9 @@ class Handlers:
         if sub == "stop" and arg:
             res = rt.manager.request_stop(arg)
             return f"🛑 Stopping {arg}." if res["ok"] else f"Not stopped: {res.get('error')}"
+        if sub == "forget" and arg:
+            res = rt.manager.forget(arg)
+            return f"Forgot {res['forgotten']} run(s)." if res["ok"] else f"Not forgotten: {res['error']}"
         if sub == "ack":
             return f"Marked {rt.manager.ack(arg)['acknowledged']} incident(s) as seen."
         if sub == "report":
@@ -178,7 +181,7 @@ class Handlers:
             return morning_report(rt.store, since=time.time() - hours * 3600)["text"]
         return (
             "Usage: /nightshift [status | show <id> | approve <id> | deny <id> | stop <id> | ack [id] | "
-            "report [hours]]"
+            "report [hours] | forget <id|finished>]"
         )
 
 
@@ -220,7 +223,7 @@ def format_detail(d: dict) -> str:
 def setup_cli(parser: Any) -> None:
     sub = parser.add_subparsers(dest="ns_cmd")
     sub.add_parser("status", help="Show watched runs")
-    for name in ("approve", "deny", "stop", "show"):
+    for name in ("approve", "deny", "stop", "show", "forget"):
         p = sub.add_parser(name, help=f"{name} a run")
         p.add_argument("run_id")
     rp = sub.add_parser("report", help="Overnight report")

@@ -166,6 +166,8 @@ def test_command_paths(ctx: FakeCtx) -> None:
     assert "Marked 0" in cmd("ack")
     assert "Nightshift report" in cmd("report 2")
     assert "No run" in cmd("show missing")
+    assert "Not forgotten" in cmd("forget missing")
+    assert "Forgot 0" in cmd("forget finished")
     card = _call(ctx, "nightshift_launch", command=f"{sys.executable} {TRAIN}", name="x")
     assert "Declined" in cmd(f"deny {card['run_id']}")
 

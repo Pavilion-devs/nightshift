@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Phase 3: Desktop pane, demo kit
+- One UI (`ui/core.js`) built into the Desktop plugin and a web-dashboard tab, verified live in `hermes dashboard`:
+  approval card with Approve/Decline, run cards, a step-based chart that shows the diverged branch next to the
+  recovered attempt, incident and restore markers, action timeline, diagnosis, two-click Stop, ack, a status-bar
+  chip, and a native notification plus toast on new critical incidents (Desktop).
+- Phone charts plot loss against step too, with integer step labels, and a blow-up no longer flattens the curve.
+- `examples/tinygpt`: a real character-level GPT on Shakespeare (CUDA / MPS / CPU) with an injected,
+  lr-dependent instability and a simulated OOM; `scripts/demo.sh` proposes both demo runs.
+- Demo scenario run 3 times in real Hermes v0.23.0 with identical results: tinygpt rolled back to step 600 with
+  lr 0.003 → 0.0015 and finished; the big-batch run restarted with batch 128 → 64, grad_accum 1 → 2 and finished.
+- Fixed: `--resume {resume}` written as two words left a dangling `--resume` on a fresh start.
+- `/nightshift forget <id|finished>` and `hermes nightshift forget …` clear finished runs from history.
+
 ### Phase 2: supervisor and Hermes wiring
 - Supervisor per run: poll → detect → decide → act → diagnose → notify. Act first, so a diverged run stops burning
   GPU before any LLM call. Per-run lock; leases so exactly one Hermes process supervises a run; a run left running
