@@ -18,7 +18,7 @@ from .alerts import Alert, Diagnoser, Notifier
 from .checkpoints import DEFAULT_PATTERNS, Checkpoint, discover, select_rollback
 from .clock import Clock
 from .detectors import DetectorConfig, classify_exit, detect_gpu_idle, detect_stall, run_window_detectors
-from .models import Incident, IncidentKind, MetricWindow, Severity
+from .models import Incident, IncidentKind, MetricWindow, Severity, is_safe_name
 from .playbook import (
     NOTIFY,
     OOM_RESTART,
@@ -159,6 +159,7 @@ class RunSupervisor:
                 points.extend(log_points)
         for src in self.extra_sources:
             points.extend(src.poll())
+        points = [p for p in points if is_safe_name(p.name)]
         if points:
             self.store.add_metrics(self.run_id, points, attempt=run.get("attempt") or 0)
             self.window.extend(points)

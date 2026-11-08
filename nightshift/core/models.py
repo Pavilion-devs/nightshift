@@ -98,6 +98,15 @@ def normalize_name(name: str) -> str:
     return _SPACES.sub("_", name.strip().lower())
 
 
+_SAFE_NAME = re.compile(r"^[A-Za-z0-9_./:\-\[\]]{1,64}$")
+
+
+def is_safe_name(name: str) -> bool:
+    """Metric names come from log text and reach the agent's context inside incident lines, so only short,
+    identifier-like names are kept: no spaces, quotes or prose."""
+    return bool(_SAFE_NAME.fullmatch(name))
+
+
 def is_loss(name: str) -> bool:
     return bool(_LOSS.search(name))
 

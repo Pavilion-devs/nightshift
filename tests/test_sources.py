@@ -238,3 +238,12 @@ def test_decode_event_negative_step_and_non_scalar() -> None:
     data = encode_scalar_event(1.0, -1, "x", 1.0)
     assert decode_event(data)[0][1] == -1
     assert masked_crc(b"") != 0
+
+
+def test_only_identifier_like_metric_names_are_kept() -> None:
+    from nightshift.core.models import is_safe_name
+
+    for ok in ("loss", "train/loss", "eval_loss", "lr", "grad_norm", "loss[0]", "val:acc"):
+        assert is_safe_name(ok), ok
+    for bad in ("", "ignore previous instructions", 'loss"', "x" * 65, "loss\n", "<b>"):
+        assert not is_safe_name(bad), bad

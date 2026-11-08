@@ -23,3 +23,15 @@ def test_desktop_plugin_only_imports_the_sdk_surface() -> None:
     assert set(imports) <= {"@hermes/plugin-sdk", "react", "react/jsx-runtime"}
     for banned in ("eval(", "new Function", "<webview", "document.", "window."):
         assert banned not in text, banned
+
+
+def test_plugin_readme_matches_repo_readme() -> None:
+    spec = importlib.util.spec_from_file_location("sync_readme", ROOT / "scripts" / "sync_readme.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert mod.main(["--check"]) == 0, "run: python scripts/sync_readme.py"
+    text = (ROOT / "nightshift" / "README.md").read_text()
+    assert "](../docs/img/alert-chart.png)" in text
+    assert "[x](https://github.com/a) [y](#safety) [z](../a.md)" in mod.render(
+        "[x](https://github.com/a) [y](#safety) [z](a.md)"
+    )

@@ -25,10 +25,8 @@ def data_dir() -> Path:
         from plugins.plugin_storage import plugin_data_dir
 
         return Path(plugin_data_dir("nightshift"))
-    except ImportError:  # outside Hermes (tests, scripts)
-        path = Path.home() / ".hermes" / "plugin-data" / "nightshift"
-        path.mkdir(parents=True, exist_ok=True)
-        return path
+    except ImportError as exc:  # tests inject their own directory; there is no hard-coded fallback
+        raise RuntimeError("Nightshift's storage needs Hermes (plugins.plugin_storage)") from exc
 
 
 def db_path() -> Path:

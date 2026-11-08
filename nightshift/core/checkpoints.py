@@ -65,7 +65,7 @@ def discover(
                 continue
             real = os.path.realpath(match)
             if real not in seen:
-                seen[real] = Checkpoint(path=match, step=step_from_name(match), mtime=mtime)
+                seen[real] = Checkpoint(path=os.path.abspath(match), step=step_from_name(match), mtime=mtime)
             if len(seen) >= max_items:
                 break
     return sorted(seen.values(), key=lambda c: (c.mtime, c.step or -1))

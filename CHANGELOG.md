@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Phase 4: ship
+- README with real demo results and screenshots, SECURITY.md (threat model, every system call) and PRIVACY.md
+  (what is stored, what leaves the machine and when). `scripts/sync_readme.py` copies the README into the plugin
+  folder for the catalog page; a test keeps them in sync.
+- Hardening: metric names parsed from logs are kept only if they are short identifiers, since they reach the
+  agent's context in incident lines; checkpoint paths handed to `{resume}` are absolute; storage no longer falls
+  back to a hard-coded `~/.hermes` path outside Hermes (tests inject their own directory).
+- Demo scenario run a 4th time in real Hermes v0.23.0: same results.
+
 ### Phase 3: Desktop pane, demo kit
 - One UI (`ui/core.js`) built into the Desktop plugin and a web-dashboard tab, verified live in `hermes dashboard`:
   approval card with Approve/Decline, run cards, a step-based chart that shows the diverged branch next to the
