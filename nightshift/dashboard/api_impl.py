@@ -6,7 +6,7 @@ import threading
 from typing import Any
 
 from ..adapter.runtime import data_dir
-from ..core import views
+from ..core import board, views
 from ..core.manager import Manager
 from ..core.store import Store
 
@@ -28,45 +28,10 @@ def _manager() -> Manager:
 
 
 def status() -> dict[str, Any]:
-    store = _get_store()
-    st = views.status(store)
+    st = board.board(_get_store())
     for r in st["runs"]:
-        series = (
-            views.run_detail(store, r["id"], max_points=240)["series"] if r["status"] != "pending" else {}
-        )
-        r["series"] = series
-        r["markers"] = [
-            {
-                "at": i["at"],
-                "step": i["onset_step"] if i["onset_step"] is not None else i["step"],
-                "kind": i["kind"],
-                "severity": i["severity"],
-                "message": i["message"],
-            }
-            for i in store.incidents(r["id"], limit=30)
-            if i["severity"] != "info"
-        ]
-        actions = store.actions(r["id"], limit=30)
-        r["recoveries"] = [
-            {"at": a["at"], "step": _ckpt_step(a), "kind": a["kind"], "message": a["message"]}
-            for a in actions
-            if a["kind"] in ("rollback_restart", "oom_restart") and a["ok"]
-        ]
-        r["timeline"] = [
-            {"at": a["at"], "kind": a["kind"], "ok": a["ok"], "message": a["message"]}
-            for a in actions
-            if not (a["kind"] == "notify" and a["message"].startswith(("covered by", "notify only")))
-        ][:6]
-        r["diagnosis"] = next(
-            (i["diagnosis"] for i in store.incidents(r["id"], limit=10) if i.get("diagnosis")), None
-        )
         if r["status"] == "pending":
             r["card"] = _manager().approval_card(r["id"])
-    st["alerts"] = [
-        {"id": i["id"], "run_id": i["run_id"], "kind": i["kind"], "message": i["message"], "at": i["at"]}
-        for i in store.incidents(unacked_only=True, limit=20)
-        if i["severity"] == "critical"
-    ]
     return st
 
 

@@ -315,3 +315,44 @@ def test_forget_only_removes_finished_runs(env) -> None:
     store.create_run(name="old2", mode="launch", status="stopped")
     assert mgr.forget("finished")["forgotten"] == 1
     assert [r["name"] for r in store.list_runs()] == ["live"]
+
+
+def _poll_until(cond, timeout: float = 10.0) -> None:
+    deadline = time.time() + timeout
+    while time.time() < deadline and not cond():
+        time.sleep(0.05)
+
+
+def test_spike_in_the_middle_of_a_poll_is_caught(env, tmp_path: Path) -> None:
+    """A fast trainer logs many lines between two polls: a blow-up followed by a high plateau must still be a
+    spike, raised at the step it began (regression: only the last point of each poll used to be checked)."""
+    mgr, store, _, _, work = env
+    log = work / "fast.log"
+    log.write_text("".join(f"step {i * 10}: loss {3.0 - i * 0.02:.4f}\n" for i in range(60)))
+    res = mgr.watch({"name": "fast", "cwd": str(work), "log_path": "fast.log"})
+    mgr.start()
+    _wait(store, res["run_id"], ("running",))
+    burst = [44.7, 206.9, 113.9, 188.5, 140.6, 119.8, 97.6, 87.8, 161.0, 98.7, 95.0, 90.0]
+    with log.open("a") as fh:  # one write, so the whole burst lands in a single poll
+        fh.write("".join(f"step {600 + i * 10}: loss {v}\n" for i, v in enumerate(burst)))
+    _poll_until(lambda: any(i["kind"] == "spike" for i in store.incidents(res["run_id"])))
+    [spike] = [i for i in store.incidents(res["run_id"]) if i["kind"] == "spike"]
+    assert spike["severity"] == "critical" and spike["onset_step"] == 600
+
+
+def test_a_warning_that_repeats_escalates_to_critical(env, tmp_path: Path) -> None:
+    mgr, store, notes, _, work = env
+    log = work / "slow.log"
+    log.write_text("".join(f"step {i * 10}: loss {3.0 - i * 0.02:.4f}\n" for i in range(60)))
+    res = mgr.watch({"name": "slow", "cwd": str(work), "log_path": "slow.log"})
+    mgr.start()
+    _wait(store, res["run_id"], ("running",))
+    with log.open("a") as fh:
+        fh.write("step 600: loss 40.0\n")
+    _poll_until(lambda: any(i["kind"] == "spike" for i in store.incidents(res["run_id"])))
+    with log.open("a") as fh:
+        fh.write("step 610: loss 90.0\n")
+    _poll_until(lambda: any(i["severity"] == "critical" for i in store.incidents(res["run_id"])))
+    sev = [i["severity"] for i in store.incidents(res["run_id"]) if i["kind"] == "spike"]
+    assert sorted(sev) == ["critical", "warn"], sev
+    assert any(a.kind == "spike" and a.page for a in notes.alerts)  # the critical one pages

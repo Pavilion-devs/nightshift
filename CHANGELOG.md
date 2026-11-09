@@ -3,6 +3,15 @@
 ## Unreleased
 
 ### Phase 4: ship
+- New Nightshift page (dashboard tab and a full Desktop page with a sidebar entry; the pane is its compact
+  form): incidents board with an attention banner, loss-over-steps chart that keeps the healthy curve in view while
+  a blow-up runs off the top, the learning rate on a second axis, diagnostics that show how far each metric moved
+  against its own median, a plain-language summary, what Nightshift did, an incidents table, a run log and an
+  approval dialog with a review checkbox. Data comes from one pure function (`core/board.py`).
+- Fixed (found in a demo round): the spike detector looked only at the last point of each poll, so a fast trainer
+  that logs many lines between polls could hide a blow-up mid-batch; it was then caught 330 steps later as
+  divergence. It now checks every new point. Also fixed: a warning that repeats into a critical incident is
+  handled again instead of being skipped as already open.
 - README with real demo results and screenshots, SECURITY.md (threat model, every system call) and PRIVACY.md
   (what is stored, what leaves the machine and when). `scripts/sync_readme.py` copies the README into the plugin
   folder for the catalog page; a test keeps them in sync.

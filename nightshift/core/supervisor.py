@@ -84,6 +84,7 @@ class RunSupervisor:
         self._thread: threading.Thread | None = None
         self.lock = threading.RLock()  # one actor at a time: the tick, or a user's stop request
         self._open: dict[tuple[str, str], int] = {}
+        self._open_rank: dict[tuple[str, str], int] = {}
         self._gpu: list[tuple[float, float]] = []
         self._last_gpu = 0.0
         self._diagnoses = 0
@@ -234,9 +235,13 @@ class RunSupervisor:
         # most severe first, so one restart handles everything that tick
         for inc in sorted(incidents, key=lambda i: -i.severity.rank):
             if inc.key in self._open:
-                continue
+                if inc.severity.rank <= self._open_rank.get(inc.key, 0):
+                    continue
+                # the same problem got worse (a warning spike repeated into a critical one): handle it anew
+                self.store.resolve_incident(self._open.pop(inc.key), at=now)
             iid = self.store.add_incident(self.run_id, inc, at=now)
             self._open[inc.key] = iid
+            self._open_rank[inc.key] = inc.severity.rank
             if restarted:
                 self.store.add_action(
                     self.run_id, NOTIFY, True, "covered by the recovery above", incident_id=iid

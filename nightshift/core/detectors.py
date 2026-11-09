@@ -32,6 +32,7 @@ class DetectorConfig:
     spike_z: float = 6.0
     spike_ema_ratio: float = 2.0
     spike_escalate_within: int = 3  # two spikes within this many points -> critical
+    spike_max_scan: int = 5000  # most points examined per check (one poll of a very chatty trainer)
     # divergence: smoothed loss stays far above its best for a while
     ema_span: int = 20
     divergence_ratio: float = 1.5
@@ -180,15 +181,22 @@ def detect_spike(w: MetricWindow, cfg: DetectorConfig) -> list[Incident]:
         if len(pts) < need:
             continue
 
-        last = len(pts) - 1
-        if not _is_spike(pts, last, cfg):
+        # every point that arrived since the last check, plus enough before them to see a repeat
+        start = max(need - 1, len(pts) - min(w.fresh(name), cfg.spike_max_scan))
+        spikes = [
+            i
+            for i in range(max(need - 1, start - cfg.spike_escalate_within + 1), len(pts))
+            if _is_spike(pts, i, cfg)
+        ]
+        if not spikes or spikes[-1] < start:
             continue
-        lo = max(0, last - cfg.spike_escalate_within + 1)
-        recent = [i for i in range(lo, last) if _is_spike(pts, i, cfg)]
-        p = pts[last]
-        hist = [q.value for q in pts[max(0, last - cfg.spike_window) : last]]
-        severity = Severity.CRITICAL if recent else Severity.WARN
-        onset = pts[refine_onset(pts, recent[0] if recent else last, cfg)]
+        repeated = any(b - a < cfg.spike_escalate_within for a, b in itertools.pairwise(spikes))
+        new = [i for i in spikes if i >= start]
+        top = max(new, key=lambda i: pts[i].value)
+        p = pts[top]
+        hist = [q.value for q in pts[max(0, spikes[0] - cfg.spike_window) : spikes[0]]]
+        severity = Severity.CRITICAL if repeated else Severity.WARN
+        onset = pts[refine_onset(pts, spikes[0], cfg)]
         out.append(
             Incident(
                 _K.SPIKE,
@@ -199,7 +207,7 @@ def detect_spike(w: MetricWindow, cfg: DetectorConfig) -> list[Incident]:
                 value=p.value,
                 onset_step=onset.step,
                 onset_wall=onset.wall,
-                details={"z": round(robust_z(p.value, hist), 2), "repeated": bool(recent)},
+                details={"z": round(robust_z(p.value, hist), 2), "repeated": repeated, "points": len(spikes)},
             )
         )
     return out

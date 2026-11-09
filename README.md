@@ -60,7 +60,7 @@ whole scenario has run **four times in real Hermes v0.23.0** with identical resu
 | `tinygpt` (lr 3e-3) | Loss blew up to 144 at step 610 → rolled back to the step-600 checkpoint, `lr 0.003 → 0.0015` | finished, step 1500, loss 1.44 (val 1.62) |
 | `tinygpt-big-batch` (batch 128) | Out of memory (simulated; the error says so) → restarted, `batch_size 128 → 64`, `grad_accum 1 → 2` | finished, step 800, loss 1.57 |
 
-![The Nightshift tab in the Hermes dashboard: both runs finished, with the actions Nightshift took](docs/img/dashboard.png)
+![The Nightshift page: the loss blew up at step 610 and ran off the chart; Nightshift rolled back to step 600 with half the learning rate, and the diagnostics show grad_norm, loss and lr all jumped at once](docs/img/dashboard.png)
 
 To try it yourself (needs a Python with `torch`):
 
@@ -84,6 +84,9 @@ git clone https://github.com/Pavilion-devs/nightshift && cd nightshift
 ln -sfn "$PWD/nightshift" ~/.hermes/plugins/nightshift
 hermes plugins enable nightshift
 ```
+
+In Hermes Desktop, also turn on Nightshift's Desktop half under **Capabilities → Plugins** (Hermes ships every
+package's Desktop half switched off until you say so). Nightshift then appears in the sidebar.
 
 Requires Hermes **v0.23.0** or newer. Nightshift has **zero runtime dependencies**: everything is Python stdlib,
 down to the PNG renderer and the TensorBoard reader.
@@ -157,8 +160,8 @@ own TFRecord/protobuf reader with CRC checks (no `tensorboard` package).
 | **`/nightshift`** | `status`, `show <id>`, `approve`, `deny`, `stop`, `ack`, `report`, `forget` |
 | **`hermes nightshift`** | the same from your shell, plus `launch … -- <cmd>` and `watch <path>` |
 | **Phone** | Critical incidents are pushed through Hermes's `send_message` (Telegram, Discord, …) with a rendered chart and, after recovery, a one-line root cause from your model |
-| **Hermes Desktop** | A right-hand pane with live charts, incident and restore markers, the action timeline, Approve and Stop buttons, a status-bar chip (`🌙 2 runs · healthy`) and a native notification on critical incidents |
-| **Web dashboard** | The same UI as a **Nightshift** tab in `hermes dashboard` |
+| **Hermes Desktop** | A full **Nightshift** page in the sidebar (incidents board, loss chart with incident and restore markers, diagnostics, run log, approval with a review checkbox), a compact right-hand pane, a status-bar chip and a native notification on critical incidents |
+| **Web dashboard** | The same page as a **Nightshift** tab in `hermes dashboard` |
 | **Conversations** | A `pre_llm_call` hook mentions each new incident **once**, so Hermes can bring it up. It stays silent while everything is healthy |
 | **Automations** | A **Morning report** blueprint: "While you slept: 2 incidents, 2 recovered" at the time you choose |
 

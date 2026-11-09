@@ -298,3 +298,11 @@ def test_helpers() -> None:
     assert ema([1.0, math.nan, 3.0], 1)[1] == 1.0
     assert robust_z(1.0, [1.0, 1.0, 1.0]) == 0.0
     assert robust_z(2.0, [1.0, 1.0, 1.0]) > 100
+
+
+def test_spike_inside_a_batch_is_found_not_only_the_last_point() -> None:
+    w = window_from(exp_decay(60))
+    burst = [44.7, 206.9, 113.9, 188.5, 140.6, 119.8, 97.6, 87.8, 161.0, 98.7, 95.0, 90.0]
+    w.extend(MetricPoint(610 + i * 10, "loss", v, T0 + 100) for i, v in enumerate(burst))
+    [inc] = detect_spike(w, CFG)
+    assert inc.severity is Severity.CRITICAL and inc.onset_step == 610 and inc.value == 206.9

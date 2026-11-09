@@ -136,16 +136,33 @@ class MetricWindow:
     def __init__(self, max_points: int = 10_000) -> None:
         self.max_points = max_points
         self._series: dict[str, deque[MetricPoint]] = {}
+        self._fresh: dict[str, int] = {}
 
-    def add(self, point: MetricPoint) -> None:
+    def _append(self, point: MetricPoint) -> None:
         series = self._series.get(point.name)
         if series is None:
             series = self._series[point.name] = deque(maxlen=self.max_points)
         series.append(point)
 
+    def add(self, point: MetricPoint) -> None:
+        """One new point: it alone is what arrived since the last check."""
+        self._append(point)
+        self._fresh = {point.name: 1}
+
     def extend(self, points: Iterable[MetricPoint]) -> None:
+        """One poll's worth of points. Detectors that judge single points look at all of them, not only the
+        last: a fast trainer logs many lines between two polls, and a spike can sit in the middle."""
+        fresh: dict[str, int] = {}
         for p in points:
-            self.add(p)
+            self._append(p)
+            fresh[p.name] = fresh.get(p.name, 0) + 1
+        if fresh:
+            self._fresh = fresh
+
+    def fresh(self, name: str) -> int:
+        """How many of ``name``'s points arrived in the latest add/extend (at least 1 if it has any)."""
+        n = len(self._series.get(name, ()))
+        return min(n, max(1, self._fresh.get(name, 0))) if n else 0
 
     def names(self) -> list[str]:
         return sorted(self._series)
