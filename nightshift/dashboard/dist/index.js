@@ -680,7 +680,8 @@ function LogModal({ run, onClose }) {
   const cols = '130px minmax(150px,1.2fr) 110px minmax(160px,1.6fr)'
   return h(Modal, { title: `Run log · ${run.name}`, onClose },
     h('div', { style: { display: 'grid', gridTemplateColumns: cols, gap: 12, padding: '20px 22px', color: C.muted,
-      fontSize: 14.5, borderBottom: `1px solid ${C.line}` } }, 'Timestamp', 'Event', 'Status', 'Details'),
+      fontSize: 14.5, borderBottom: `1px solid ${C.line}` } },
+    ...['Timestamp', 'Event', 'Status', 'Details'].map(t => h('span', { key: t }, t))),
     ...(run.log || []).map((e, i) => h('div', { key: i, style: { display: 'grid', gridTemplateColumns: cols, gap: 12,
       alignItems: 'center', padding: '20px 22px', borderBottom: `1px solid ${C.line}` } },
     h('span', { style: { fontSize: 13.5, color: C.sub, ...NUM } }, fmtClock(e.at, true)),

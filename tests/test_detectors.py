@@ -143,6 +143,11 @@ def test_plateau_silent_while_improving() -> None:
     assert detect_plateau(window_from(exp_decay(100, tau=200)), CFG) == []
 
 
+def test_a_climbing_loss_is_not_a_plateau() -> None:
+    vals = exp_decay(80) + [v * 30 for v in exp_decay(40)]  # blew up: much worse, not flat
+    assert detect_plateau(window_from(vals), CFG) == []
+
+
 def test_plateau_needs_enough_steps() -> None:
     assert detect_plateau(window_from([1.0] * 20), CFG) == []
 

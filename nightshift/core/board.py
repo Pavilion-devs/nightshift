@@ -241,7 +241,13 @@ def run_log(run: dict[str, Any], incidents: list, actions: list) -> list[dict[st
     if run.get("started_at"):
         detail = ", ".join(f"{k} {v}" for k, v in list(params.items())[:3]) or "approved command"
         ev.append({"at": run["started_at"], "event": "Run launched", "status": "success", "detail": detail})
+    latest_info: dict[str, int] = {}
+    for i in incidents:  # newest first: keep one note per informational kind
+        if i["severity"] == "info":
+            latest_info.setdefault(i["kind"], i["id"])
     for i in incidents:
+        if i["severity"] == "info" and latest_info.get(i["kind"]) != i["id"]:
+            continue
         sev = {"critical": "failed", "warn": "warning"}.get(i["severity"], "info")
         step = f"step {i['step']}" if i["step"] is not None else ""
         ev.append({"at": i["at"], "event": _title(i), "status": sev, "detail": (i["message"] + (

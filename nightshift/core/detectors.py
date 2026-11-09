@@ -43,6 +43,7 @@ class DetectorConfig:
     plateau_tail_frac: float = 0.15
     plateau_min_tail_points: int = 10
     plateau_min_rel_improvement: float = 0.005
+    plateau_max_rel_worsening: float = 0.05
     # overfit
     overfit_consecutive: int = 3
     overfit_min_rel_rise: float = 0.02  # noise on a converged val loss wobbles ~1%; real overfitting climbs
@@ -275,7 +276,8 @@ def detect_plateau(w: MetricWindow, cfg: DetectorConfig) -> list[Incident]:
         if not math.isfinite(best_before) or best_before == 0:
             continue
         rel = (best_before - best_tail) / abs(best_before)
-        if rel >= cfg.plateau_min_rel_improvement:
+        # flat, not worse: a loss that is climbing is divergence's business, not a plateau
+        if rel >= cfg.plateau_min_rel_improvement or rel < -cfg.plateau_max_rel_worsening:
             continue
         p = pts[-1]
         out.append(
