@@ -68,11 +68,14 @@ class HermesNotifier:
                 message += f"\nMEDIA:{path}"
             except OSError:
                 log.warning("nightshift: could not write the chart image", exc_info=True)
+        args = {"action": "send", "target": target, "message": message}
         try:
-            raw = self.ctx.dispatch_tool(
-                "send_message", {"action": "send", "target": target, "message": message}
-            )
-            result = json.loads(raw) if isinstance(raw, str) else raw
+            result = _as_dict(self.ctx.dispatch_tool("send_message", args))
+            if _unknown_tool(result):
+                # Hermes registers its built-in tools on the first agent turn; a run approved from the CLI
+                # right after a gateway start can alert before that. Load them through the public
+                # registry and send with Hermes's own tool (it reads the platform config, not us).
+                result = _as_dict(_dispatch_builtin("send_message", args))
         except Exception as exc:
             log.warning("nightshift: alert delivery to %s failed: %s", target, exc)
             result = {"error": str(exc)}
@@ -81,3 +84,19 @@ class HermesNotifier:
             log.warning("nightshift: alert delivery to %s failed: %s", target, result)
         self.sent.append({"target": target, "ok": ok, "title": alert.title, "result": result})
         del self.sent[:-20]
+
+
+def _as_dict(raw: Any) -> Any:
+    return json.loads(raw) if isinstance(raw, str) else raw
+
+
+def _unknown_tool(result: Any) -> bool:
+    return isinstance(result, dict) and "Unknown tool" in str(result.get("error", ""))
+
+
+def _dispatch_builtin(name: str, args: dict[str, Any]) -> Any:
+    from tools.registry import discover_builtin_tools, registry  # public plugin API (tools.registry)
+
+    if registry.get_entry(name) is None:
+        discover_builtin_tools()
+    return registry.dispatch(name, args)

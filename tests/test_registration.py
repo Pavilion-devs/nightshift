@@ -255,6 +255,25 @@ def test_notifier_target_rules(tmp_path: Path) -> None:
     assert n.sent[-1]["ok"] is False
 
 
+def test_notifier_loads_builtin_tools_when_the_gateway_has_not_yet(tmp_path: Path, monkeypatch) -> None:
+    """Right after a gateway start Hermes has not registered send_message yet (it does on the first agent
+    turn); the alert still goes out, through Hermes's own tool from the public registry."""
+    import nightshift.adapter.notify as notify_mod
+
+    monkeypatch.setattr(notify_mod, "_image_dir", lambda: tmp_path)
+    calls = []
+    monkeypatch.setattr(
+        notify_mod, "_dispatch_builtin", lambda name, args: calls.append(name) or '{"success": true}'
+    )
+    store = Store(tmp_path / "n.db")
+    store.create_run(id="r1", name="tiny", mode="launch", origin={"surface": "cli"})
+    c = FakeCtx(config={"alert_target": "telegram:42"})
+    c.dispatch_tool = lambda *a, **k: json.dumps({"error": "Unknown tool: send_message"})  # type: ignore[method-assign]
+    n = HermesNotifier(c, store)
+    n.send(_alert(chart=None))
+    assert calls == ["send_message"] and n.sent[-1]["ok"] is True
+
+
 def test_diagnoser() -> None:
     c = FakeCtx()
     text = HermesDiagnoser(c).diagnose(
