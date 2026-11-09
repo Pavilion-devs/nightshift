@@ -10,8 +10,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest]
         python: ["3.11", "3.12", "3.13", "3.14"]
+        include:
+          - os: macos-latest  # process control differs on macOS (re-exec'ing launchers, zombies, killpg)
+            python: "3.12"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
