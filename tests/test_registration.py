@@ -255,15 +255,14 @@ def test_notifier_target_rules(tmp_path: Path) -> None:
     assert n.sent[-1]["ok"] is False
 
 
-def test_notifier_loads_builtin_tools_when_the_gateway_has_not_yet(tmp_path: Path, monkeypatch) -> None:
-    """Right after a gateway start Hermes has not registered send_message yet (it does on the first agent
-    turn); the alert still goes out, through Hermes's own tool from the public registry."""
+def test_notifier_falls_back_to_hermes_send(tmp_path: Path, monkeypatch) -> None:
+    """Hermes v0.23 has no agent-callable send_message tool; the alert goes out through `hermes send`."""
     import nightshift.adapter.notify as notify_mod
 
     monkeypatch.setattr(notify_mod, "_image_dir", lambda: tmp_path)
     calls = []
     monkeypatch.setattr(
-        notify_mod, "_dispatch_builtin", lambda name, args: calls.append(name) or '{"success": true}'
+        notify_mod, "hermes_send", lambda target, msg: calls.append(target) or {"success": True}
     )
     store = Store(tmp_path / "n.db")
     store.create_run(id="r1", name="tiny", mode="launch", origin={"surface": "cli"})
@@ -271,7 +270,7 @@ def test_notifier_loads_builtin_tools_when_the_gateway_has_not_yet(tmp_path: Pat
     c.dispatch_tool = lambda *a, **k: json.dumps({"error": "Unknown tool: send_message"})  # type: ignore[method-assign]
     n = HermesNotifier(c, store)
     n.send(_alert(chart=None))
-    assert calls == ["send_message"] and n.sent[-1]["ok"] is True
+    assert calls == ["telegram:42"] and n.sent[-1]["ok"] is True
 
 
 def test_diagnoser() -> None:
@@ -285,3 +284,29 @@ def test_diagnoser() -> None:
     failing = FakeCtx()
     failing.llm = FakeLlm(fail=True)
     assert HermesDiagnoser(failing).diagnose({}) is None
+
+
+def test_hermes_send_uses_argv_and_stdin(monkeypatch) -> None:
+    import subprocess
+
+    import nightshift.adapter.notify as notify_mod
+
+    seen = {}
+
+    def fake_run(argv, **kw):
+        seen.update(argv=argv, input=kw["input"], shell=kw.get("shell", False))
+        return subprocess.CompletedProcess(argv, 0, stdout='{"success": true}\n', stderr="")
+
+    monkeypatch.setattr(notify_mod.shutil, "which", lambda name: "/usr/local/bin/hermes")
+    monkeypatch.setattr(notify_mod.subprocess, "run", fake_run)
+    assert notify_mod.hermes_send("telegram:42", "loss spiked; $(rm -rf ~)") == {"success": True}
+    assert seen["argv"] == ["/usr/local/bin/hermes", "send", "--to", "telegram:42", "--file", "-", "--json"]
+    assert (
+        seen["input"] == "loss spiked; $(rm -rf ~)" and seen["shell"] is False
+    )  # text never reaches a shell
+    monkeypatch.setattr(
+        notify_mod.subprocess,
+        "run",
+        lambda argv, **kw: subprocess.CompletedProcess(argv, 1, "", "no telegram"),
+    )
+    assert notify_mod.hermes_send("telegram:42", "x") == {"error": "no telegram"}

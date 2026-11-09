@@ -8,7 +8,7 @@ description: >-
   the agent can only propose) it launches the training command you approved as a background process and may
   stop or restart that process group with only the parameter changes the playbook declares; it reads the run's
   log, metric and checkpoint paths; it stores run data in its plugin data folder; on a critical incident it may
-  make capped LLM calls on your configured model and send an alert through Hermes's send_message to your
+  make capped LLM calls on your configured model and send an alert with Hermes's own `hermes send` command to your
   messaging platform. No telemetry and no network calls of its own.
 author: Pavilion-devs
 license: MIT
@@ -30,7 +30,7 @@ config_schema:
     type: str
     default: ""
     description: >-
-      Where to push critical alerts, as a send_message target (e.g. "telegram" for its home channel). Empty:
+      Where to push critical alerts, as a `hermes send --to` target (e.g. "telegram" for its home channel, "telegram:<chat id>"). Empty:
       the platform the run was requested from, if it was a chat. "none" turns pushes off.
   diagnose:
     type: bool

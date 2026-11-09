@@ -193,7 +193,10 @@ judges will run. In v0.23.0 `PluginContext` lives in `hermes_cli/plugins.py`. `p
 answer 3 changed. Hermes runs plugins on its bundled **Python 3.14** in a plugin host
 (`plugins.isolation: host`). File and function names are given so each answer can be re-verified.
 
-1. **Alerts from a background thread → `ctx.dispatch_tool("send_message", {"action": "send", "target":
+1. **CORRECTED Nov 9: v0.23.0 has no agent-callable `send_message` tool** (`toolsets.py`: "deliberately no
+   agent-callable send_message tool"), so `dispatch_tool` answers "Unknown tool". Alerts go through `hermes send
+   --to <target> --file - --json` (`hermes_cli/send_cmd.py`; argv, no shell), trying `dispatch_tool` first for
+   versions that have the tool. Original note: **Alerts from a background thread → `ctx.dispatch_tool("send_message", {"action": "send", "target":
    "telegram", "message": "..."})`.** `hermes_cli/plugin_messages.py` (`post`) refuses outside a bound session
    ("a timer, a plugin thread, cron … is refused"), so `post_message` only works inside a tool/command turn.
    `ctx.inject_message` (`hermes_cli/plugins_injection.py`) triggers an agent turn and needs

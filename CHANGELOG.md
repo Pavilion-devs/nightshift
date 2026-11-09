@@ -3,6 +3,10 @@
 ## Unreleased
 
 ### Phase 4: ship
+- Fixed: phone alerts never reached Telegram. Hermes v0.23 deliberately has no agent-callable `send_message`
+  tool, so `ctx.dispatch_tool("send_message")` answered "Unknown tool". Alerts now go through Hermes's documented
+  `hermes send` (argv, message on stdin, Hermes's own credentials); verified live: the chart and the model's root
+  cause arrived in Telegram.
 - New Nightshift page (dashboard tab and a full Desktop page with a sidebar entry; the pane is its compact
   form): incidents board with an attention banner, loss-over-steps chart that keeps the healthy curve in view while
   a blow-up runs off the top, the learning rate on a second axis, diagnostics that show how far each metric moved

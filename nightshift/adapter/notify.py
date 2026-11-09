@@ -1,10 +1,16 @@
 """Deliver alerts. Every alert is already in Nightshift's database (the Desktop pane and the next chat turn see it);
-paging alerts are also pushed to a messaging platform through Hermes's own ``send_message`` tool."""
+paging alerts are also pushed to a messaging platform with Hermes's own `hermes send` (or ``send_message``
+where a Hermes version provides it as a tool)."""
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import logging
+import os
+import shutil
+import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -72,10 +78,10 @@ class HermesNotifier:
         try:
             result = _as_dict(self.ctx.dispatch_tool("send_message", args))
             if _unknown_tool(result):
-                # Hermes registers its built-in tools on the first agent turn; a run approved from the CLI
-                # right after a gateway start can alert before that. Load them through the public
-                # registry and send with Hermes's own tool (it reads the platform config, not us).
-                result = _as_dict(_dispatch_builtin("send_message", args))
+                # Hermes v0.23 has no agent-callable send_message tool (toolsets.py says so on purpose).
+                # Its documented route for pushing text from outside a conversation is `hermes send`:
+                # no LLM, no agent loop, the gateway's own stored credentials. Nightshift never sees them.
+                result = hermes_send(target, message)
         except Exception as exc:
             log.warning("nightshift: alert delivery to %s failed: %s", target, exc)
             result = {"error": str(exc)}
@@ -94,9 +100,29 @@ def _unknown_tool(result: Any) -> bool:
     return isinstance(result, dict) and "Unknown tool" in str(result.get("error", ""))
 
 
-def _dispatch_builtin(name: str, args: dict[str, Any]) -> Any:
-    from tools.registry import discover_builtin_tools, registry  # public plugin API (tools.registry)
-
-    if registry.get_entry(name) is None:
-        discover_builtin_tools()
-    return registry.dispatch(name, args)
+def hermes_send(target: str, message: str, timeout_s: float = 60.0) -> dict[str, Any]:
+    """Deliver through Hermes's own `hermes send` CLI (argv, no shell; the text goes in on stdin)."""
+    exe = shutil.which("hermes")
+    argv = [exe] if exe else [sys.executable, "-m", "hermes_cli.main"]
+    env = None
+    if (
+        not exe
+    ):  # the plugin host runs Hermes's Python with -I: point it at the Hermes package it already uses
+        spec = importlib.util.find_spec("hermes_cli")
+        if spec is None or not spec.origin:
+            return {"error": "hermes CLI not found"}
+        env = {**os.environ, "PYTHONPATH": str(Path(spec.origin).resolve().parent.parent)}
+    argv += ["send", "--to", target, "--file", "-", "--json"]
+    try:
+        proc = subprocess.run(argv, input=message, capture_output=True, text=True, timeout=timeout_s, env=env,
+                              check=False)  # fmt: skip
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {"error": f"hermes send: {exc}"}
+    out = proc.stdout.strip()
+    try:
+        result = json.loads(out.splitlines()[-1]) if out else {}
+    except ValueError:
+        result = {"output": out[-300:]}
+    if proc.returncode != 0:
+        return {"error": (proc.stderr.strip() or out)[-300:] or f"hermes send exited {proc.returncode}"}
+    return result if isinstance(result, dict) else {"result": result}

@@ -161,7 +161,7 @@ own TFRecord/protobuf reader with CRC checks (no `tensorboard` package).
 | **Chat** (any platform) | Six tools: `nightshift_launch` (propose), `nightshift_watch`, `nightshift_status`, `nightshift_run`, `nightshift_report`, `nightshift_ack`; plus a bundled skill that teaches the agent how to write a recoverable command |
 | **`/nightshift`** | `status`, `show <id>`, `approve`, `deny`, `stop`, `ack`, `report`, `forget` |
 | **`hermes nightshift`** | the same from your shell, plus `launch … -- <cmd>` and `watch <path>` |
-| **Phone** | Critical incidents are pushed through Hermes's `send_message` (Telegram, Discord, …) with a rendered chart and, after recovery, a one-line root cause from your model |
+| **Phone** | Critical incidents are pushed with Hermes's own `hermes send` (Telegram, Discord, …) with a rendered chart and, after recovery, a one-line root cause from your model |
 | **Hermes Desktop** | A full **Nightshift** page in the sidebar (incidents board, loss chart with incident and restore markers, diagnostics, run log, approval with a review checkbox), a compact right-hand pane, a status-bar chip and a native notification on critical incidents |
 | **Web dashboard** | The same page as a **Nightshift** tab in `hermes dashboard` |
 | **Conversations** | A `pre_llm_call` hook mentions each new incident **once**, so Hermes can bring it up. It stays silent while everything is healthy |
@@ -199,7 +199,7 @@ Once you approve a run, Nightshift:
 - stores run data in its plugin data folder (`~/.hermes/plugin-data/nightshift/`) and alert charts in
   `~/.hermes/image_cache/nightshift/`;
 - on a critical incident, may make **capped LLM calls on your configured model** with redacted log context, and
-  **send an alert** through Hermes's `send_message` to your messaging platform.
+  **send an alert** with Hermes's own `hermes send` command (run as an argv list, message on stdin) to your messaging platform.
 
 No telemetry. No network calls of its own. No credentials read or stored.
 
@@ -209,7 +209,7 @@ Set in `~/.hermes/config.yaml` under `plugins.entries.nightshift.settings`:
 
 | Key | Default | Meaning |
 |---|---|---|
-| `alert_target` | `""` | Where to push critical alerts, as a `send_message` target (`"telegram"` → its home channel). Empty: the chat the run was requested from. `"none"` turns pushes off |
+| `alert_target` | `""` | Where to push critical alerts, as a `hermes send --to` target (`"telegram"` → its home channel, `"telegram:<chat id>"` → that chat). Empty: the chat the run was requested from. `"none"` turns pushes off |
 | `diagnose` | `true` | Ask your model for a one-line root cause on critical incidents |
 | `max_diagnoses` | `3` | Most diagnosis calls per run |
 | `poll_seconds` | `2.0` | How often each run's metrics are read (min 0.5) |

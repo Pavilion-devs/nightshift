@@ -23,7 +23,8 @@ rather than a public issue. We aim to reply within 72 hours.
 ## Catalog compliance
 
 - No core overrides, no monkeypatching, and no private Hermes imports. Hermes is reached only through
-  `register_*`, `ctx.dispatch_tool("send_message", …)`, `ctx.llm.complete` and `plugins.plugin_storage`.
+  `register_*`, `ctx.llm.complete`, `plugins.plugin_storage` and Hermes's documented `hermes send` CLI for alerts
+  (`ctx.dispatch_tool("send_message", …)` is tried first, for Hermes versions that expose it as a tool).
 - No credentials: Nightshift reads no `.env`, `auth.json`, keychain or token file, and needs no secrets.
 - No self-updating code, no binaries, no `.pyc` files, and zero runtime dependencies.
 - The Desktop plugin imports only `@hermes/plugin-sdk`, `react` and `react/jsx-runtime`. It has no `eval`, and it
@@ -37,6 +38,7 @@ rather than a public issue. We aim to reply within 72 hours.
 | `subprocess.Popen(argv, shell=False, start_new_session=True)` | `core/process.py` | launch the run you approved |
 | `os.killpg(pgid, SIGTERM)`, then `SIGKILL` after a grace period | `core/process.py` | stop or restart that run's process group |
 | `ps -o lstart= -p <pid>` | `core/process.py` | PID-reuse guard before any signal |
+| `hermes send --to <target> --file - --json` (argv, message on stdin; Hermes reads the platform credentials) | `adapter/notify.py` | push a critical alert to your messaging platform |
 | `nvidia-smi --query-gpu=utilization.gpu` (if installed) | `core/process.py` | GPU-idle detection |
 | read files | the run's directory, log, metric files, checkpoint globs | metrics and checkpoint discovery |
 | write files | `~/.hermes/plugin-data/nightshift/`, `~/.hermes/image_cache/nightshift/` | run database, logs, alert charts |
