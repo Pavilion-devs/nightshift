@@ -8,6 +8,8 @@ Start a run and go to sleep. Nightshift reads every metric as it's logged, catch
 out-of-memory crashes and stalls, and recovers the run inside a playbook you approved. It wakes you only when it
 matters, and the alert shows the chart.
 
+▶️ **[Watch the 90-second demo](https://x.com/olathepavilion/status/2120428632145322184)** · 🧩 **[Hermes plugin catalog PR #153009](https://github.com/NousResearch/hermes-agent/pull/153009)**
+
 ![Loss chart from a real run: the loss blows up at step 610, Nightshift rolls back to the step-600 checkpoint with half the learning rate, and the run trains on to step 1500](../docs/img/alert-chart.png)
 
 <sub>A real run, not a mock-up: a char-level GPT on Shakespeare. At step 610 the loss blows up to 144. Nightshift
@@ -73,7 +75,7 @@ hermes nightshift approve <id>                                        # for each
 
 ## Install
 
-Once Nightshift is listed in the catalog:
+Once Nightshift is listed in the catalog ([submission PR #153009](https://github.com/NousResearch/hermes-agent/pull/153009), under review):
 
 ```bash
 hermes plugins install nightshift
