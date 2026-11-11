@@ -1,11 +1,12 @@
 manifest_version: 2
 name: nightshift
-version: 0.1.0
+version: 0.1.1
 description: >-
   Hermes takes the night shift on your ML training runs. Nightshift watches a run's metrics, catches NaN, loss
   spikes, divergence, OOM crashes and stalls, recovers the run within a playbook you approved, and alerts you
   with the chart. Disclosure: after your explicit approval (/nightshift approve or the pane's Approve button;
-  the agent can only propose) it launches the training command you approved as a background process and may
+  the agent can only propose; there is no CLI approve) it launches the training command you approved as a
+  background process with a minimal environment (no Hermes keys unless named in env_passthrough) and may
   stop or restart that process group with only the parameter changes the playbook declares; it reads the run's
   log, metric and checkpoint paths; it stores run data in its plugin data folder; on a critical incident it may
   make capped LLM calls on your configured model and send an alert with Hermes's own `hermes send` command to your

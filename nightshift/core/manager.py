@@ -290,6 +290,7 @@ class Manager:
                 cwd=run["cwd"],
                 log_path=log_path,
                 env_extra=template_env(run.get("params") or {}, None, run_id, 0),
+                env_passthrough=Playbook.from_dict(run.get("playbook")).env_passthrough,
             )
         except Exception as exc:
             log.exception("nightshift: launch failed for %s", run_id)

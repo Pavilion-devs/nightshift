@@ -299,3 +299,63 @@ def test_reports(tmp_path: Path) -> None:
     alert = alert_for_status(store, store.get_run(rid), "finished", "training finished")
     assert not alert.page and "Final loss" in alert.body
     assert alert_for_status(store, store.get_run(rid), "failed", "boom").page
+
+
+def test_reattached_run_without_start_time_is_never_signalled(tmp_path: Path) -> None:
+    h = ProcessHandle.launch([sys.executable, "-c", "import time; time.sleep(30)"], cwd=str(tmp_path),
+                             log_path=str(tmp_path / "x.log"))  # fmt: skip
+    try:
+        blind = ProcessHandle.reattach(h.pid, h.pgid, None, h.log_path)
+        assert not blind.is_ours() and not blind.verifiable
+        assert blind.poll() == (True, None)  # still reported alive, so nothing restarts a second copy
+        assert blind.stop(grace_s=0.5) is False  # refused: it can't be proven ours
+        time.sleep(0.2)
+        assert pid_alive(h.pid) and h.popen.poll() is None
+    finally:
+        os.killpg(h.pgid, signal.SIGKILL)
+        h.popen.wait()
+    gone = ProcessHandle.reattach(h.pid, h.pgid, None, h.log_path)
+    assert gone.poll() == (False, None) and gone.stop() is True
+
+
+def test_minimal_env_keeps_what_training_needs_and_drops_secrets() -> None:
+    from nightshift.core.process import minimal_env
+
+    src = {
+        "PATH": "/bin", "HOME": "/h", "LANG": "C", "LC_ALL": "C", "CUDA_VISIBLE_DEVICES": "0",
+        "NVIDIA_DRIVER_CAPABILITIES": "all", "HF_HOME": "/hf", "TORCH_HOME": "/t", "PYTHONPATH": "/p",
+        "VIRTUAL_ENV": "/v", "CONDA_PREFIX": "/c", "NIGHTSHIFT_LR": "0.1",
+        "OPENAI_API_KEY": "sk-x", "ANTHROPIC_API_KEY": "a", "OPENROUTER_API_KEY": "o", "NOUS_API_KEY": "n",
+        "TELEGRAM_BOT_TOKEN": "t", "HF_TOKEN": "hf_x", "GITHUB_TOKEN": "g", "WANDB_API_KEY": "w",
+        "AWS_SECRET_ACCESS_KEY": "s",
+    }  # fmt: skip
+    env = minimal_env(src)
+    kept = {"PATH", "HOME", "LANG", "LC_ALL", "CUDA_VISIBLE_DEVICES", "NVIDIA_DRIVER_CAPABILITIES", "HF_HOME",
+            "TORCH_HOME", "PYTHONPATH", "VIRTUAL_ENV", "CONDA_PREFIX", "NIGHTSHIFT_LR"}  # fmt: skip
+    assert set(env) == kept
+    assert minimal_env(src, ["WANDB_API_KEY"])["WANDB_API_KEY"] == "w"
+    assert "OPENAI_API_KEY" not in minimal_env(src, ["WANDB_API_KEY"])
+
+
+def test_launched_trainer_never_sees_hermes_secrets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-should-not-leak")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:should-not-leak")
+    monkeypatch.setenv("WANDB_API_KEY", "wandb-ok")
+    code = "import json, os; print(json.dumps(sorted(os.environ)), flush=True)"
+    for passthrough, log in (((), "a.log"), (("WANDB_API_KEY",), "b.log")):
+        h = ProcessHandle.launch([sys.executable, "-c", code], cwd=str(tmp_path), log_path=str(tmp_path / log),
+                                 env_extra={"NIGHTSHIFT_RUN_ID": "r1"}, env_passthrough=passthrough)  # fmt: skip
+        h.popen.wait(timeout=20)
+        seen = set(__import__("json").loads((tmp_path / log).read_text().strip().splitlines()[-1]))
+        assert "OPENAI_API_KEY" not in seen and "TELEGRAM_BOT_TOKEN" not in seen
+        assert {"PATH", "NIGHTSHIFT_RUN_ID", "PYTHONUNBUFFERED"} <= seen
+        assert ("WANDB_API_KEY" in seen) == bool(passthrough)
+
+
+def test_env_passthrough_is_validated_and_shown_on_the_card() -> None:
+    pb = Playbook.from_dict({"env_passthrough": ["WANDB_API_KEY", "WANDB_API_KEY", " HF_TOKEN "]})
+    assert pb.env_passthrough == ["HF_TOKEN", "WANDB_API_KEY"]
+    assert any("plus HF_TOKEN, WANDB_API_KEY" in ln for ln in pb.describe({}))
+    assert any("no keys from Hermes" in ln for ln in Playbook().describe({}))
+    with pytest.raises(ValueError):
+        Playbook.from_dict({"env_passthrough": ["BAD NAME; rm -rf"]})

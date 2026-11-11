@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import math
 import os
 import sys
@@ -233,6 +234,40 @@ def test_another_process_adopts_a_run_after_a_crash(tmp_path: Path) -> None:
         assert run["status"] == "finished" and run["interventions"] == 1 and run["owner"] in (None, "B")
     finally:
         b.shutdown(wait=True)
+
+
+def test_an_adopted_run_without_a_start_time_is_never_signalled(tmp_path: Path) -> None:
+    """If the stored fingerprint is missing, the next Hermes must not signal or restart the process."""
+    store = Store(tmp_path / "db" / "n.db")
+    work = tmp_path / "w"
+    work.mkdir()
+    cfg = SupervisorConfig(poll_s=0.05, lease_s=0.5, stop_grace_s=1.0)
+    a = Manager(store, data_dir=tmp_path / "db", sup_cfg=cfg, owner="A")
+    card = a.propose(
+        {"name": "blind", "cwd": str(work), "command": _cmd("--lr", "{lr}", "--steps", "900",
+                                                            "--unstable-after", "600", "--resume={resume}"),
+         "params": {"lr": 3e-3}}
+    )  # fmt: skip
+    a.approve(card["run_id"])
+    a.housekeeping()
+    run = store.get_run(card["run_id"])
+    pid, pgid = run["pid"], run["pgid"]
+    a.shutdown(wait=True)
+    store.update_run(card["run_id"], proc_id=None)
+
+    b_store = Store(tmp_path / "db" / "n.db")
+    b = Manager(b_store, data_dir=tmp_path / "db", sup_cfg=cfg, owner="B")
+    time.sleep(0.6)
+    b.start()
+    try:
+        run = _wait(b_store, card["run_id"], ("finished", "stopped", "failed"))
+        # the blow-up was seen, but the process could not be proven ours: nothing signalled or relaunched
+        assert run["status"] == "failed" and "cannot prove" in run["note"], run
+        assert run["interventions"] == 0 and run["attempt"] == 0 and run["pid"] == pid
+    finally:
+        b.shutdown(wait=True)
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(pgid, 9)
 
 
 def test_two_managers_never_both_supervise(tmp_path: Path) -> None:

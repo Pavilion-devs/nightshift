@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### 0.1.1: catalog review (requested by the reviewer at 8bbbd6e4)
+- The trainer no longer inherits Hermes's environment. It gets a minimal one (`PATH`, `HOME`, user, locale, temp
+  dirs, Python/conda/venv paths, `CUDA_*`/`NVIDIA_*`/`TORCH_*`, Hugging Face cache paths, `NIGHTSHIFT_*`), so
+  provider keys never reach the training command. Anything else must be named in the playbook's new
+  `env_passthrough` (`--env NAME` on the CLI), which the approval card shows.
+- Removed `hermes nightshift approve`: the agent can reach the CLI through its terminal tool, so it could have
+  approved its own proposal. Approval is `/nightshift approve` in chat or the Approve button only.
+- A run re-attached without a recorded process start time is never signalled or restarted; it is marked failed
+  and you are paged. A new launch retries `ps` briefly so the start time is always recorded.
+
 ### Phase 4: ship
 - Fixed: phone alerts never reached Telegram. Hermes v0.23 deliberately has no agent-callable `send_message`
   tool, so `ctx.dispatch_tool("send_message")` answered "Unknown tool". Alerts now go through Hermes's documented

@@ -7,6 +7,7 @@ may change and how (``lr *= 0.5`` floored at ``lr_min``; ``batch_size //= 2`` wi
 
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass, field, fields
 from typing import Any
 
@@ -35,6 +36,7 @@ DEFAULT_RULES: dict[str, str] = {
 
 # notifications for these show up in the pane and the morning report, but never buzz a phone
 QUIET_KINDS = ("plateau",)
+_ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 
 
 @dataclass
@@ -50,6 +52,9 @@ class Playbook:
     rollback_margin_steps: int = 0
     checkpoint_patterns: list[str] = field(default_factory=list)  # empty = common layouts under cwd
     page_on: list[str] = field(default_factory=lambda: ["critical"])  # warnings: pane + morning report
+    # extra environment variables the trainer may see (e.g. WANDB_API_KEY); everything else beyond the
+    # minimal environment in core/process.py stays out. Shown on the approval card.
+    env_passthrough: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         bad = {k: v for k, v in self.rules.items() if v not in ACTIONS}
@@ -59,6 +64,12 @@ class Playbook:
             raise ValueError("lr_factor must be between 0 and 1")
         if self.max_interventions < 0:
             raise ValueError("max_interventions must be >= 0")
+        if isinstance(self.env_passthrough, str):
+            self.env_passthrough = [self.env_passthrough]
+        self.env_passthrough = sorted({str(n).strip() for n in self.env_passthrough if str(n).strip()})
+        bad_env = [n for n in self.env_passthrough if not _ENV_NAME.match(n)]
+        if bad_env:
+            raise ValueError(f"env_passthrough: not an environment variable name: {bad_env}")
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> Playbook:
@@ -93,6 +104,15 @@ class Playbook:
         lines.append(
             "If recovery is not possible or the budget runs out, the run is stopped and you are paged"
         )
+        if self.env_passthrough:
+            lines.append(
+                "Environment: minimal (PATH, HOME, locale, CUDA/torch/HF/conda vars) plus "
+                + ", ".join(self.env_passthrough)
+            )
+        else:
+            lines.append(
+                "Environment: minimal (PATH, HOME, locale, CUDA/torch/HF/conda vars); no keys from Hermes"
+            )
         return lines
 
 

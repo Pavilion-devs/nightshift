@@ -70,7 +70,7 @@ To try it yourself (needs a Python with `torch`):
 
 ```bash
 PYTHON=/path/to/python-with-torch scripts/demo.sh ~/nightshift-demo   # proposes both runs; nothing starts
-hermes nightshift approve <id>                                        # for each run
+/nightshift approve <id>          # in chat, for each run (or the Approve button in Hermes Desktop)
 ```
 
 ## Install
@@ -112,11 +112,13 @@ Hermes reads your script's argument parser and **proposes** a run. Nothing has s
   • Rollback lowers lr ×0.5 each time (floor 1e-07)
   • Out-of-memory halves batch_size, grad_accum ×2
   • If recovery is not possible or the budget runs out, the run is stopped and you are paged
-Approve with: hermes nightshift approve d7516822   (or /nightshift approve d7516822)
+  • Environment: minimal (PATH, HOME, locale, CUDA/torch/HF/conda vars); no keys from Hermes
+Approve in chat with /nightshift approve d7516822, or with the Approve button in Hermes Desktop.
 ```
 
-**You** approve it: `/nightshift approve <id>`, `hermes nightshift approve <id>`, or the **Approve & launch**
-button in the Nightshift pane. The agent can't approve its own proposal. From then on Nightshift supervises the
+**You** approve it: `/nightshift approve <id>` in chat, or the **Approve & launch** button in Hermes Desktop or
+the dashboard tab. The agent can't approve its own proposal, and there is deliberately no `hermes nightshift
+approve`: the agent can run shell commands, so a CLI approve would let it approve itself. From then on Nightshift supervises the
 run, even across Hermes restarts.
 
 In the morning, ask "how did training go?" or run `/nightshift report`:
@@ -162,7 +164,7 @@ own TFRecord/protobuf reader with CRC checks (no `tensorboard` package).
 |---|---|
 | **Chat** (any platform) | Six tools: `nightshift_launch` (propose), `nightshift_watch`, `nightshift_status`, `nightshift_run`, `nightshift_report`, `nightshift_ack`; plus a bundled skill that teaches the agent how to write a recoverable command |
 | **`/nightshift`** | `status`, `show <id>`, `approve`, `deny`, `stop`, `ack`, `report`, `forget` |
-| **`hermes nightshift`** | the same from your shell, plus `launch … -- <cmd>` and `watch <path>` |
+| **`hermes nightshift`** | the same from your shell except `approve` (human surfaces only), plus `launch … -- <cmd>` and `watch <path>` |
 | **Phone** | Critical incidents are pushed with Hermes's own `hermes send` (Telegram, Discord, …) with a rendered chart and, after recovery, a one-line root cause from your model |
 | **Hermes Desktop** | A full **Nightshift** page in the sidebar (incidents board, loss chart with incident and restore markers, diagnostics, run log, approval with a review checkbox), a compact right-hand pane, a status-bar chip and a native notification on critical incidents |
 | **Web dashboard** | The same page as a **Nightshift** tab in `hermes dashboard` |
@@ -174,19 +176,26 @@ own TFRecord/protobuf reader with CRC checks (no `tensorboard` package).
 Nightshift runs processes on your machine, so it stays inside tight limits:
 
 1. **Consent first.** The agent can only *propose* a run. A human approves the exact command, directory,
-   playbook and intervention budget. No tool can approve, so neither the agent nor a cron job can start a process.
+   playbook and intervention budget. No tool and no shell command can approve, so neither the agent nor a cron
+   job can start a process.
 2. **Bounded autonomy.** A restart re-renders only the approved template, changing only the declared
    parameters (`lr`, `batch_size`, `grad_accum`, `resume`). Each change is bounded: LR floor 1e-7, batch ≥ 1, at
    most 3 interventions, 10 minutes apart. A relapse inside the cooldown, a missing checkpoint or an exhausted
    budget stops the run and pages you.
 3. **No shell.** Commands run as argv lists (`shell=False`) in their own process group.
-4. **Only its own processes.** Nightshift signals only process groups it started, and it re-checks the PID's
-   start time before every signal, so it never kills a reused PID. Watched runs are notify-only.
-5. **Silent while healthy.** No LLM calls, no notifications and no context injection unless an incident is
+4. **A minimal environment.** The trainer does not inherit Hermes's environment, so provider API keys and other
+   secrets never reach it or anything it imports. It gets `PATH`, `HOME`, the user and locale, temp dirs,
+   `PYTHONPATH`/`VIRTUAL_ENV`/`CONDA_*`, `CUDA_*`/`NVIDIA_*`/`TORCH_*`, the Hugging Face cache paths and its own
+   `NIGHTSHIFT_*` values. Anything else (say `WANDB_API_KEY`) must be named in the playbook's `env_passthrough`
+   (`--env WANDB_API_KEY` on the CLI), and it's shown on the approval card.
+5. **Only its own processes.** Nightshift signals only process groups it started, and it re-checks the PID's
+   start time before every signal, so it never kills a reused PID. A run re-attached without a recorded start
+   time is never signalled or restarted; you're told to handle it. Watched runs are notify-only.
+6. **Silent while healthy.** No LLM calls, no notifications and no context injection unless an incident is
    open. Diagnosis runs once per critical incident, **after** recovery, capped at 3 per run.
-6. **Secrets stay out.** Log tails are scrubbed (API keys, tokens, `KEY=value` secrets, URL credentials) before
+7. **Secrets stay out.** Log tails are scrubbed (API keys, tokens, `KEY=value` secrets, URL credentials) before
    they're stored, sent to your model or pushed to a platform.
-7. **One supervisor per run.** A lease in SQLite ensures exactly one Hermes process supervises each run. A run
+8. **One supervisor per run.** A lease in SQLite ensures exactly one Hermes process supervises each run. A run
    left behind by a crashed Hermes is adopted by the next one. Short-lived `hermes` commands never touch a run.
 
 See [SECURITY.md](../SECURITY.md) for the threat model and [PRIVACY.md](../PRIVACY.md) for what's stored where.
@@ -195,7 +204,8 @@ See [SECURITY.md](../SECURITY.md) for the threat model and [PRIVACY.md](../PRIVA
 
 Once you approve a run, Nightshift:
 
-- launches the training command as a **long-running background process**;
+- launches the training command as a **long-running background process**, with a minimal environment (no
+  Hermes keys unless you list them in `env_passthrough`);
 - may **stop or restart that process group** with only the parameter changes the playbook declares;
 - reads the run's **log, metric and checkpoint paths** (and runs `nvidia-smi` when present);
 - stores run data in its plugin data folder (`~/.hermes/plugin-data/nightshift/`) and alert charts in

@@ -223,7 +223,9 @@ def format_detail(d: dict) -> str:
 def setup_cli(parser: Any) -> None:
     sub = parser.add_subparsers(dest="ns_cmd")
     sub.add_parser("status", help="Show watched runs")
-    for name in ("approve", "deny", "stop", "show", "forget"):
+    # No "approve" here on purpose: the agent can run shell commands, so a CLI approve would let it approve
+    # its own proposal. Approval is human-only: /nightshift approve in chat, or the Approve button.
+    for name in ("deny", "stop", "show", "forget"):
         p = sub.add_parser(name, help=f"{name} a run")
         p.add_argument("run_id")
     rp = sub.add_parser("report", help="Overnight report")
@@ -241,6 +243,13 @@ def setup_cli(parser: Any) -> None:
     )
     lp.add_argument("--checkpoints", action="append", default=[], metavar="GLOB")
     lp.add_argument("--max-interventions", type=int, default=None)
+    lp.add_argument(
+        "--env",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="pass this environment variable through to the trainer (e.g. WANDB_API_KEY)",
+    )
     lp.add_argument("train_command", nargs="+", help="the training command (put it after --)")
     wp = sub.add_parser("watch", help="Watch an existing run's log read-only")
     wp.add_argument("log_path")
@@ -269,8 +278,13 @@ def make_cli_handler(handlers: Handlers) -> Callable[[Any], int]:
                 ]
                 if args.checkpoints:
                     spec["checkpoint_patterns"] = args.checkpoints
+                playbook: dict[str, Any] = {}
                 if args.max_interventions is not None:
-                    spec["playbook"] = {"max_interventions": args.max_interventions}
+                    playbook["max_interventions"] = args.max_interventions
+                if args.env:
+                    playbook["env_passthrough"] = list(args.env)
+                if playbook:
+                    spec["playbook"] = playbook
                 out = json.loads(handlers.tool_handlers()["nightshift_launch"](spec))
             else:
                 spec["log_path"] = args.log_path
@@ -301,5 +315,7 @@ def format_card(card: dict) -> str:
         f"  command:   {card['command']}",
     ]
     lines += [f"  • {ln}" for ln in card["playbook"]]
-    lines.append(f"Approve with: hermes nightshift approve {card['run_id']}   (or {card['approve_with']})")
+    lines.append(
+        f"Approve in chat with {card['approve_with']}, or with the Approve button in Hermes Desktop."
+    )
     return "\n".join(lines)

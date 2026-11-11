@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hermes-nightshift"
-version = "0.1.0"
+version = "0.1.1"
 description = "Hermes takes the night shift on your ML training runs: watch, detect, recover, alert."
 readme = "README.md"
 license = { text = "MIT" }

@@ -45,6 +45,10 @@ from .sources import LogTailSource, MetricSource, make_source
 from .store import Store
 
 log = logging.getLogger("nightshift")
+_UNVERIFIED = (
+    "pid {pid} has no recorded start time, so Nightshift cannot prove it is the process it started; "
+    "nothing was signalled or restarted. Stop it yourself if needed"
+)
 
 TERMINAL = ("finished", "stopped", "failed", "cancelled")
 
@@ -208,7 +212,7 @@ class RunSupervisor:
                     run["pid"], run.get("pgid") or run["pid"], run.get("proc_id"), run.get("log_path") or ""
                 )
                 self.handle = handle
-                return handle.is_ours(), None
+                return handle.poll()
             return True, None  # attached to files only: treat as alive, stall detection still applies
         if self.handle is None:
             if not run.get("pid"):
@@ -283,12 +287,14 @@ class RunSupervisor:
         if d.action == NOTIFY:
             return (d.reason, True, {})
         if d.action == STOP:
-            self._stop_process()
+            if not self._stop_process():
+                return self._unverified(run, d)
             self._finish(run, "stopped", d.reason, notify=False)
             return (f"stopped the run: {d.reason}", True, {})
         # restarts
         self.store.update_run(self.run_id, status="recovering")
-        self._stop_process()
+        if not self._stop_process():
+            return self._unverified(run, d)
         ckpt = self._pick_checkpoint(run, inc, d)
         if d.action == ROLLBACK_RESTART and ckpt is None:
             when = f"step {inc.onset_step}" if inc.onset_step is not None else "the incident"
@@ -308,6 +314,13 @@ class RunSupervisor:
         verb = "rolled back to" if d.action == ROLLBACK_RESTART else "restarted from"
         text = f"{verb} {where}" + (f", {changes}" if changes else "")
         return (text, True, {"checkpoint": ckpt.to_dict() if ckpt else None})
+
+    def _unverified(self, run: dict[str, Any], d: Decision) -> tuple[str, bool, dict[str, Any]]:
+        """The process can't be proven ours: signal nothing, start nothing, hand it to the user."""
+        reason = _UNVERIFIED.format(pid=run.get("pid"))
+        self._finish(run, "failed", reason, notify=False)
+        d.action, d.page = STOP, True
+        return (reason, False, {})
 
     def _pick_checkpoint(self, run: dict[str, Any], inc: Incident, d: Decision) -> Checkpoint | None:
         if RESUME not in placeholders(run.get("argv") or []):
@@ -334,6 +347,7 @@ class RunSupervisor:
             cwd=run["cwd"],
             log_path=log_path,
             env_extra=template_env(params, resume, self.run_id, attempt),
+            env_passthrough=self.playbook.env_passthrough,
         )
         self.handle = handle
         now = self.clock.now()
@@ -361,14 +375,17 @@ class RunSupervisor:
             run = self._run()
             if run["status"] in TERMINAL:
                 return f"already {run['status']}"
-            self._stop_process()
+            if not self._stop_process():
+                return _UNVERIFIED.format(pid=run.get("pid"))
             self.store.add_action(self.run_id, STOP, True, reason)
             self._finish(run, "stopped", reason)
             return "stopped"
 
-    def _stop_process(self) -> None:
+    def _stop_process(self) -> bool:
+        """False when the process could not be verified as ours, so nothing was signalled and it may still run."""
         if self.handle is not None:
-            self.handle.stop(self.cfg.stop_grace_s)
+            return self.handle.stop(self.cfg.stop_grace_s)
+        return True
 
     def _finish(self, run: dict[str, Any], status: str, note: str, *, notify: bool = True) -> None:
         now = self.clock.now()

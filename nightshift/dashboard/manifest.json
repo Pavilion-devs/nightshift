@@ -3,7 +3,7 @@
   "label": "Nightshift",
   "description": "Live view of the ML training runs Nightshift is watching: metrics, incidents and actions.",
   "icon": "Moon",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "tab": {
     "path": "/nightshift",
     "position": "after:skills"

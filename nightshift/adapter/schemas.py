@@ -61,7 +61,9 @@ LAUNCH: dict[str, Any] = {
                 "type": "object",
                 "description": "Optional overrides: max_interventions (default 3), cooldown_s (600), "
                 "lr_param ('lr'), lr_factor (0.5), batch_param ('batch_size'), accum_param ('grad_accum'), "
-                "rules {incident_kind: 'notify'|'stop'|'rollback_restart'|'oom_restart'}.",
+                "rules {incident_kind: 'notify'|'stop'|'rollback_restart'|'oom_restart'}, "
+                "env_passthrough (list of environment variable names the trainer may see beyond a minimal "
+                "environment, e.g. ['WANDB_API_KEY']; shown to the user on the approval card).",
             },
         },
         "required": ["command"],

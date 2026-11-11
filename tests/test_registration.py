@@ -200,16 +200,20 @@ def test_cli_handler(ctx: FakeCtx, capsys: pytest.CaptureFixture[str]) -> None:
     setup(parser)
     assert handler(parser.parse_args(["status"])) == 0
     assert handler(parser.parse_args(["report", "--hours", "1"])) == 0
-    assert handler(parser.parse_args(["approve", "nope"])) == 0
-    out = capsys.readouterr().out
-    assert "Nightshift" in out and "Not approved" in out
+    capsys.readouterr()
+    # approval is human-only: the agent can run shell commands, so the CLI has no approve
+    with pytest.raises(SystemExit):
+        parser.parse_args(["approve", "nope"])
+    capsys.readouterr()
     args = parser.parse_args(
         ["launch", "--name", "cli", "--param", "lr=0.003", "--param", "tag=x", "--source", "jsonl:m.jsonl",
-         "--checkpoints", "out/*.json", "--max-interventions", "1", "--", sys.executable, TRAIN, "--lr", "{lr}"]
+         "--checkpoints", "out/*.json", "--max-interventions", "1", "--env", "WANDB_API_KEY",
+         "--", sys.executable, TRAIN, "--lr", "{lr}"]
     )  # fmt: skip
     assert handler(args) == 0
     out = capsys.readouterr().out
-    assert "nothing has started yet" in out and "--lr 0.003" in out and "hermes nightshift approve" in out
+    assert "nothing has started yet" in out and "--lr 0.003" in out and "/nightshift approve" in out
+    assert "hermes nightshift approve" not in out and "plus WANDB_API_KEY" in out
     assert handler(parser.parse_args(["launch", "--", "no-such-binary-xyz"])) == 1
     (Path(ctx._cwd) / "w.log").write_text("step 1: loss 2\n")
     assert handler(parser.parse_args(["watch", "w.log"])) == 0

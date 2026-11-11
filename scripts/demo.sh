@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Propose the two demo runs from plan.md §9. Nothing starts until you approve each one
-# (`hermes nightshift approve <id>`, `/nightshift approve <id>` or the Approve button in the pane).
+# (`/nightshift approve <id>` in chat, or the Approve button in Hermes Desktop; there is no CLI approve).
 #
 #   PYTHON=/path/to/python-with-torch scripts/demo.sh [workdir]
 #

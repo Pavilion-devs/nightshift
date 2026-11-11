@@ -4,13 +4,18 @@ Safety properties:
   * argv lists only, never a shell;
   * every process starts in its own session (its own process group), so a stop reaches the trainer and its
     dataloader workers, and nothing else;
-  * before any signal we re-check that the pid is still the process we started (start time + command), so a
-    recycled pid after a reboot can never be killed by mistake.
+  * the trainer gets a minimal environment (``minimal_env``), not Hermes's: provider keys and other secrets in
+    Hermes's environment never reach it unless the user lists them in the approved ``env_passthrough``;
+  * before any signal we re-check that the pid is still the process we started (its start time), so a
+    recycled pid after a reboot can never be killed by mistake. A re-attached run with no recorded start
+    time is never signalled.
 """
 
 from __future__ import annotations
 
+import logging
 import os
+import re
 import shlex
 import signal
 import string
@@ -20,6 +25,32 @@ from dataclasses import dataclass
 from pathlib import Path
 
 RESUME = "resume"
+log = logging.getLogger("nightshift")
+
+# What a training command needs from the environment, and nothing else. Secrets (provider API keys, tokens)
+# are never on this list; a user who needs one (say WANDB_API_KEY) names it in the approved env_passthrough.
+ENV_KEEP = (
+    "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LANGUAGE", "TZ", "TERM",
+    "TMPDIR", "TMP", "TEMP",
+    "PYTHONPATH", "PYTHONHASHSEED", "VIRTUAL_ENV",
+    "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH", "DYLD_FALLBACK_LIBRARY_PATH",
+    "HF_HOME", "HF_HUB_CACHE", "HF_DATASETS_CACHE", "HF_HUB_OFFLINE", "HF_DATASETS_OFFLINE",
+    "TRANSFORMERS_CACHE", "TRANSFORMERS_OFFLINE", "XDG_CACHE_HOME",
+    "OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
+    "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE",
+)  # fmt: skip
+ENV_KEEP_PREFIXES = ("LC_", "CUDA_", "NVIDIA_", "TORCH_", "PYTORCH_", "CONDA_", "NCCL_", "ROCR_", "HIP_",
+                     "MPS_", "NIGHTSHIFT_")  # fmt: skip
+ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
+
+
+def minimal_env(
+    source: dict[str, str] | None = None, passthrough: list[str] | tuple[str, ...] = ()
+) -> dict[str, str]:
+    """The environment a training command runs with: ``ENV_KEEP`` + ``ENV_KEEP_PREFIXES`` + ``passthrough``."""
+    source = dict(os.environ if source is None else source)
+    extra = set(passthrough)
+    return {k: v for k, v in source.items() if k in ENV_KEEP or k.startswith(ENV_KEEP_PREFIXES) or k in extra}
 
 
 class TemplateError(ValueError):
@@ -140,10 +171,16 @@ class ProcessHandle:
 
     @classmethod
     def launch(
-        cls, argv: list[str], *, cwd: str, log_path: str, env_extra: dict[str, str] | None = None
+        cls,
+        argv: list[str],
+        *,
+        cwd: str,
+        log_path: str,
+        env_extra: dict[str, str] | None = None,
+        env_passthrough: list[str] | tuple[str, ...] = (),
     ) -> ProcessHandle:
         Path(log_path).parent.mkdir(parents=True, exist_ok=True)
-        env = {**os.environ, **(env_extra or {}), "PYTHONUNBUFFERED": "1"}
+        env = {**minimal_env(passthrough=env_passthrough), **(env_extra or {}), "PYTHONUNBUFFERED": "1"}
         with open(log_path, "ab", buffering=0) as log:
             popen = subprocess.Popen(
                 argv,
@@ -158,7 +195,7 @@ class ProcessHandle:
         return cls(
             pid=popen.pid,
             pgid=popen.pid,  # start_new_session: the child leads its own group
-            proc_id=fingerprint(popen.pid),
+            proc_id=_first_fingerprint(popen.pid),
             log_path=log_path,
             popen=popen,
             started_at=time.time(),
@@ -169,26 +206,41 @@ class ProcessHandle:
         return cls(pid=pid, pgid=pgid, proc_id=proc_id, log_path=log_path)
 
     def is_ours(self) -> bool:
-        """Still the very process we started (guards against pid reuse)."""
+        """Still the very process we started (guards against pid reuse).
+
+        A re-attached handle with no recorded start time can't be verified, so it is never ours."""
         if self.popen is not None:
             return self.popen.poll() is None
-        if not pid_alive(self.pid):
+        if self.proc_id is None or not pid_alive(self.pid):
             return False
         current = fingerprint(self.pid)
         if current is None:
             return False
         # rows written before v0.1.0 stored "<start time> <command>"
-        return self.proc_id is None or self.proc_id == current or self.proc_id.startswith(current + " ")
+        return self.proc_id == current or self.proc_id.startswith(current + " ")
+
+    @property
+    def verifiable(self) -> bool:
+        return self.popen is not None or self.proc_id is not None
 
     def poll(self) -> tuple[bool, int | None]:
         """(alive, exit code). Exit code is None for a re-attached process whose parent we are not."""
         if self.popen is not None:
             rc = self.popen.poll()
             return (rc is None, rc)
+        if not self.verifiable:
+            return (pid_alive(self.pid), None)  # liveness only: we will not signal it
         return (self.is_ours(), None)
 
     def stop(self, grace_s: float = 15.0) -> bool:
-        """SIGTERM the process group, wait, then SIGKILL. Returns True once nothing of it is left running."""
+        """SIGTERM the process group, wait, then SIGKILL. Returns True once nothing of it is left running.
+
+        Returns False without sending anything when the process can't be verified as ours."""
+        if not self.verifiable:
+            if pid_alive(self.pid):
+                log.warning("nightshift: refusing to signal pid %s: no recorded start time", self.pid)
+                return False
+            return True
         if not self.is_ours():
             return True
         try:
@@ -216,6 +268,16 @@ class ProcessHandle:
             except subprocess.TimeoutExpired:
                 return False
         return not _group_alive(self.pgid)
+
+
+def _first_fingerprint(pid: int, tries: int = 5) -> str | None:
+    """The start time of a process we just spawned (``ps`` can briefly miss a brand-new pid)."""
+    for _ in range(tries):
+        fp = fingerprint(pid)
+        if fp is not None:
+            return fp
+        time.sleep(0.05)
+    return None
 
 
 def _group_alive(pgid: int) -> bool:
